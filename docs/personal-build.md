@@ -126,7 +126,8 @@ each covered by unit tests and checked live on a three-monitor Mac.
   `smart-opposite` the shorter one, keeping the aspect ratio.
 - `aerospace subscribe` gains `window-closed` and `window-moved` events, so a
   workspace bar can follow windows without polling `list-windows`.
-  `window-moved` also reports moves made by `on-window-detected` callbacks.
+  `window-moved` also reports moves made by `on-window-detected` callbacks, and
+  minimizing (no `workspace`) or restoring (no `prevWorkspace`) a window.
 
 It also changes where hidden windows are parked. AeroSpace hides the windows of
 invisible workspaces in a bottom corner of their monitor. When both bottom
@@ -143,3 +144,11 @@ With these, a rule can open a window floating, sized and centred:
     if.app-id = 'com.apple.QuickTimePlayerX'
     run = ['layout floating', 'resize smart 1600', 'center']
 ```
+
+## Building
+
+`./build-personal-release.sh [label] [--laptop]` builds a signed release of the
+current commit against Xcode's SDK, stages it in
+`~/.local/share/aerospace-builds/<label>-<hash>/` and, with `--laptop`, copies it
+to the laptop. `aerospace-switch <label>-<hash>` (in `JasonBates/aerospace-config`)
+installs it and keeps every window on its workspace across the restart.
