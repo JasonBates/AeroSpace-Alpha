@@ -145,7 +145,7 @@ Your existing `~/.aerospace.toml` works unchanged. The new keys and commands are
 
 - **This is a personal build.** Releases appear when I rebuild for myself, not on a schedule. It is public so the code can be read and borrowed, and so the build can be downloaded.
 - **It tracks upstream.** The branch is rebased onto upstream `main`; nothing upstream is rewritten. Current base: v0.21.3-Beta.
-- **#2179 uses a private macOS API.** Upstream has chosen not to ship private APIs. Alpha calls two undocumented SkyLight functions to fix cross-monitor focus, with a guard that falls back to stock behaviour if a macOS update removes them.
+- **#2179 uses a private macOS API.** Upstream has chosen not to ship private APIs. Alpha calls two undocumented SkyLight functions to fix cross-monitor focus. If they are unavailable or a call fails, Alpha logs once, disables that path for the process, and falls back to stock focus behaviour.
 - **The config is not backward compatible.** Stock AeroSpace rejects `single-window-width-rules` and the other new keys. Remove them before going back to a stock build.
 - **Building:** `./build-personal-release.sh` produces a signed app and CLI from a clean working tree. It reads the signing identity from `~/.config/aerospace/env`; see `personal-build.env.example` and the [build notes](docs/personal-build.md).
 

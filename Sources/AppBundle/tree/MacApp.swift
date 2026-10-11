@@ -39,6 +39,7 @@ final class MacApp: AbstractApp {
     private var thread: Thread?
     private var setFrameJobs: [UInt32: RunLoopJob] = [:]
     @MainActor private static var focusJob: RunLoopJob? = nil
+    @MainActor fileprivate static var isPrivateFocusDisabledForProcess = false
 
     /*conforms*/ var name: String? { nsApp.localizedName }
     /*conforms*/ var execPath: String? { nsApp.executableURL?.path }
@@ -195,16 +196,31 @@ final class MacApp: AbstractApp {
         // across monitors when "Displays have separate Spaces" is on. Use the private SkyLight API to
         // key the exact window (see aeroMakeKeyWindow). The private call is bracketed by a best-effort
         // crash flag so it disables itself on next launch if it ever crashes (checkFocusPrivateApiCrashGuard).
-        if NSScreen.screensHaveSeparateSpaces, monitorInfos.count > 1,
-           !UserDefaults.standard.bool(forKey: privateFocusApiDisabledKey)
+        let shouldUsePrivateFocus = NSScreen.screensHaveSeparateSpaces &&
+            monitorInfos.count > 1 &&
+            !UserDefaults.standard.bool(forKey: privateFocusApiDisabledKey) &&
+            !MacApp.isPrivateFocusDisabledForProcess
+        if shouldUsePrivateFocus, aeroPrivateFocusAvailable()
         {
-            MacApp.focusJob = withWindowAsync(windowId, .cancellable) { [pid] window, job in
+            MacApp.focusJob = withWindowAsync(windowId, .cancellable) { [pid, nsApp] window, job in
                 UserDefaults.standard.set(true, forKey: privateFocusApiInUseKey)
-                aeroMakeKeyWindow(pid, windowId)
+                let didFocus = aeroMakeKeyWindow(pid, windowId)
                 UserDefaults.standard.set(false, forKey: privateFocusApiInUseKey)
-                AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+                if didFocus {
+                    AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+                } else {
+                    Task.startUnstructured { @MainActor in disablePrivateFocusForProcess() }
+                    try performNativeFocus(
+                        job: job,
+                        setMain: { window.set(Ax.isMainAttr, true) },
+                        raise: { AXUIElementPerformAction(window, kAXRaiseAction as CFString) },
+                        activate: { nsApp.activate(options: .activateIgnoringOtherApps) },
+                    )
+                }
             }
             return
+        } else if shouldUsePrivateFocus {
+            disablePrivateFocusForProcess()
         }
         // Performance optimization. If possible avoid doing AX requests
         // (important for apps which are slow at responding even such basic AX requests. E.g. Godot)
@@ -384,7 +400,7 @@ final class MacApp: AbstractApp {
         guard let thread else { return .empty }
         // Read on this actor before hopping to the dedicated AX thread, same as in getFocusedWindow.
         let staleTabCandidateId = lastNativeFocusedWindowId
-        let (alive, dead, replacement) = try await thread.runInLoop(.cancellable) { [nsApp, windows, retiredNativeTabWindowIds, axApp, staleTabCandidateId] (job) -> ([UInt32], [UInt32], NativeTabWindowReplacement?) in
+        let (alive, dead, replacement) = try await thread.runInLoop(.cancellable) { [pid, nsApp, windows, retiredNativeTabWindowIds, axApp, staleTabCandidateId] (job) -> ([UInt32], [UInt32], NativeTabWindowReplacement?) in
             var alive: [UInt32: AxWindow] = windows.threadGuarded
             var dead = [UInt32: AxWindow]()
             let liveWindows = axApp.threadGuarded.get(Ax.windowsAttr) ?? []
@@ -421,6 +437,7 @@ final class MacApp: AbstractApp {
             // Second line of defence against lock screen. See the first line of defence: closedWindowsCache
             // Second and third lines of defence are technically needed only to avoid potential flickering
             var isAppUnresponsive = false
+            var windowServerWindowIds: Set<UInt32>?
             if frontmostAppBundleId != lockScreenAppBundleId {
                 let (stillAlive, newlyDead) = try alive.partition { entry in
                     try job.checkCancellation()
@@ -428,7 +445,12 @@ final class MacApp: AbstractApp {
                         isRetiredNativeTab: retiredIds.contains(entry.key),
                         isAppUnresponsive: &isAppUnresponsive,
                         containingWindowIdError: { entry.value.ax.containingWindowIdError() },
-                        isWindowOnScreen: { isWindowOnScreen(entry.key) },
+                        windowStillExists: {
+                            if windowServerWindowIds == nil {
+                                windowServerWindowIds = getWindowServerWindowIds(ownerPid: pid)
+                            }
+                            return windowServerWindowIds?.contains(entry.key) == true
+                        },
                     )
                 }
                 alive = stillAlive
@@ -490,6 +512,12 @@ final class MacApp: AbstractApp {
             try? body(window.ax, job)
         } ?? .cancelled
     }
+}
+
+@MainActor private func disablePrivateFocusForProcess() {
+    guard !MacApp.isPrivateFocusDisabledForProcess else { return }
+    MacApp.isPrivateFocusDisabledForProcess = true
+    eprint("Private SkyLight focus is unavailable or failed; falling back to the public focus path")
 }
 
 func performNativeFocus(
@@ -572,29 +600,33 @@ func nativeTabReplacementCandidate(
 /// "closed", but an app that hangs or is too busy to respond fails it with `.cannotComplete` once the AX
 /// messaging timeout expires, and its windows were garbage collected
 /// (https://github.com/nikitabobko/AeroSpace/issues/1216, upstream PR #2317). On `.cannotComplete`, ask
-/// the WindowServer whether the window is still on screen instead (windows hidden in the corner are still
-/// on screen), and once the app timed out, skip AX for the rest of the refresh.
+/// the WindowServer whether the window still exists instead, and once the app timed out, skip AX for the
+/// rest of the refresh. The caller supplies a lazily captured, per-app WindowServer snapshot so off-screen
+/// windows remain alive without making one WindowServer request per tracked window.
 func isTrackedWindowAlive(
     isRetiredNativeTab: Bool,
     isAppUnresponsive: inout Bool,
     containingWindowIdError: () -> AXError,
-    isWindowOnScreen: () -> Bool,
+    windowStillExists: () -> Bool,
 ) -> Bool {
     if isRetiredNativeTab { return false }
-    if isAppUnresponsive { return isWindowOnScreen() }
+    if isAppUnresponsive { return windowStillExists() }
     switch containingWindowIdError() {
         case .success: return true
         // the app hangs or is too busy to respond. Don't mistake it for a closed window
         case .cannotComplete:
             isAppUnresponsive = true
-            return isWindowOnScreen()
+            return windowStillExists()
         default: return false
     }
 }
 
-private func isWindowOnScreen(_ windowId: UInt32) -> Bool {
-    let info = (CGWindowListCopyWindowInfo(.optionIncludingWindow, windowId) as? [[String: Any]])?.first
-    return info?[kCGWindowIsOnscreen as String] as? Bool == true
+private func getWindowServerWindowIds(ownerPid: pid_t) -> Set<UInt32> {
+    let infos = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []
+    return Set(infos.compactMap { info in
+        guard (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == ownerPid else { return nil }
+        return (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value
+    })
 }
 
 // The old id is already retired by this point, so a cancelled splice would strand it: it can't

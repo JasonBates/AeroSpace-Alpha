@@ -2,6 +2,7 @@
 #define private_header_h
 
 #import <ApplicationServices/ApplicationServices.h>
+#include <stdbool.h>
 
 // Potential alternative 1?
 // func allWindowsOnCurrentMacOsSpace() {
@@ -25,10 +26,13 @@
 // func _AXUIElementGetWindow(_ axUiElement: AXUIElement, _ id: inout CGWindowID) -> AXError
 AXError _AXUIElementGetWindow(AXUIElementRef element, uint32_t *identifier);
 
-// Reliably makes window `wid` of process `pid` the key window, bypassing the public accessibility API
-// which focuses the wrong window of the same app across monitors when "Displays have separate Spaces"
-// is enabled. Implemented with private SkyLight (WindowServer) APIs, the same technique used by yabai
-// and Amethyst. See https://github.com/nikitabobko/AeroSpace/issues/101
-void aeroMakeKeyWindow(pid_t pid, uint32_t wid);
+// Returns whether the private SkyLight symbols used by aeroMakeKeyWindow are available.
+bool aeroPrivateFocusAvailable(void);
+
+// Attempts to make window `wid` of process `pid` the key window, bypassing the public accessibility
+// API which focuses the wrong window of the same app across monitors when "Displays have separate
+// Spaces" is enabled. Returns false if SkyLight is unavailable or any step fails, so the caller can
+// fall back to the public focus path. See https://github.com/nikitabobko/AeroSpace/issues/101
+bool aeroMakeKeyWindow(pid_t pid, uint32_t wid);
 
 #endif

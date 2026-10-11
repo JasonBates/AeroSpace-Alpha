@@ -7,26 +7,26 @@ import XCTest
 final class UnresponsiveAppWindowsTest: XCTestCase {
     func testRespondingWindowIsAlive() {
         var isAppUnresponsive = false
-        XCTAssertTrue(isAlive(.success, onScreen: false, &isAppUnresponsive))
+        XCTAssertTrue(isAlive(.success, windowStillExists: false, &isAppUnresponsive))
         XCTAssertFalse(isAppUnresponsive)
     }
 
     func testClosedWindowIsDead() {
         var isAppUnresponsive = false
-        XCTAssertFalse(isAlive(.invalidUIElement, onScreen: true, &isAppUnresponsive))
-        XCTAssertFalse(isAlive(.failure, onScreen: true, &isAppUnresponsive))
+        XCTAssertFalse(isAlive(.invalidUIElement, windowStillExists: true, &isAppUnresponsive))
+        XCTAssertFalse(isAlive(.failure, windowStillExists: true, &isAppUnresponsive))
         XCTAssertFalse(isAppUnresponsive)
     }
 
-    func testTimedOutWindowThatIsStillOnScreenIsKept() {
+    func testTimedOutWindowThatStillExistsIsKeptEvenWhenOffScreen() {
         var isAppUnresponsive = false
-        XCTAssertTrue(isAlive(.cannotComplete, onScreen: true, &isAppUnresponsive))
+        XCTAssertTrue(isAlive(.cannotComplete, windowStillExists: true, &isAppUnresponsive))
         XCTAssertTrue(isAppUnresponsive)
     }
 
-    func testTimedOutWindowThatIsOffScreenIsDead() {
+    func testTimedOutWindowAbsentFromWindowServerIsDead() {
         var isAppUnresponsive = false
-        XCTAssertFalse(isAlive(.cannotComplete, onScreen: false, &isAppUnresponsive))
+        XCTAssertFalse(isAlive(.cannotComplete, windowStillExists: false, &isAppUnresponsive))
         XCTAssertTrue(isAppUnresponsive)
     }
 
@@ -37,7 +37,7 @@ final class UnresponsiveAppWindowsTest: XCTestCase {
             isRetiredNativeTab: false,
             isAppUnresponsive: &isAppUnresponsive,
             containingWindowIdError: { axRequests += 1; return .success },
-            isWindowOnScreen: { true },
+            windowStillExists: { true },
         )
         XCTAssertTrue(alive)
         assertEquals(axRequests, 0)
@@ -51,7 +51,7 @@ final class UnresponsiveAppWindowsTest: XCTestCase {
                 isRetiredNativeTab: true,
                 isAppUnresponsive: &isAppUnresponsive,
                 containingWindowIdError: { axRequests += 1; return .cannotComplete },
-                isWindowOnScreen: { true },
+                windowStillExists: { true },
             )
             XCTAssertFalse(alive)
             assertEquals(axRequests, 0)
@@ -60,11 +60,11 @@ final class UnresponsiveAppWindowsTest: XCTestCase {
     }
 }
 
-private func isAlive(_ error: AXError, onScreen: Bool, _ isAppUnresponsive: inout Bool) -> Bool {
+private func isAlive(_ error: AXError, windowStillExists: Bool, _ isAppUnresponsive: inout Bool) -> Bool {
     isTrackedWindowAlive(
         isRetiredNativeTab: false,
         isAppUnresponsive: &isAppUnresponsive,
         containingWindowIdError: { error },
-        isWindowOnScreen: { onScreen },
+        windowStillExists: { windowStillExists },
     )
 }
