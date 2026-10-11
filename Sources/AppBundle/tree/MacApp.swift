@@ -40,6 +40,7 @@ final class MacApp: AbstractApp {
     private var setFrameJobs: [UInt32: RunLoopJob] = [:]
     @MainActor private static var focusJob: RunLoopJob? = nil
     @MainActor fileprivate static var isPrivateFocusDisabledForProcess = false
+    @MainActor fileprivate static var privateFocusConsecutiveFailures = 0
 
     /*conforms*/ var name: String? { nsApp.localizedName }
     /*conforms*/ var execPath: String? { nsApp.executableURL?.path }
@@ -207,9 +208,12 @@ final class MacApp: AbstractApp {
                 let didFocus = aeroMakeKeyWindow(pid, windowId)
                 UserDefaults.standard.set(false, forKey: privateFocusApiInUseKey)
                 if didFocus {
+                    Task.startUnstructured { @MainActor in recordPrivateFocusSuccess() }
                     AXUIElementPerformAction(window, kAXRaiseAction as CFString)
                 } else {
-                    Task.startUnstructured { @MainActor in disablePrivateFocusForProcess() }
+                    // A single failure can be transient (e.g. the app is quitting), so fall back for this
+                    // request only; the private path is switched off after several failures in a row.
+                    Task.startUnstructured { @MainActor in recordPrivateFocusFailure() }
                     try performNativeFocus(
                         job: job,
                         setMain: { window.set(Ax.isMainAttr, true) },
@@ -220,7 +224,7 @@ final class MacApp: AbstractApp {
             }
             return
         } else if shouldUsePrivateFocus {
-            disablePrivateFocusForProcess()
+            disablePrivateFocusForProcess(reason: "the SkyLight symbols are unavailable")
         }
         // Performance optimization. If possible avoid doing AX requests
         // (important for apps which are slow at responding even such basic AX requests. E.g. Godot)
@@ -514,10 +518,24 @@ final class MacApp: AbstractApp {
     }
 }
 
-@MainActor private func disablePrivateFocusForProcess() {
+/// Consecutive private-focus failures tolerated before the private path is switched off for the process.
+private let privateFocusFailureLimit = 3
+
+@MainActor private func recordPrivateFocusSuccess() {
+    MacApp.privateFocusConsecutiveFailures = 0
+}
+
+@MainActor private func recordPrivateFocusFailure() {
+    MacApp.privateFocusConsecutiveFailures += 1
+    if MacApp.privateFocusConsecutiveFailures >= privateFocusFailureLimit {
+        disablePrivateFocusForProcess(reason: "\(privateFocusFailureLimit) consecutive calls failed")
+    }
+}
+
+@MainActor private func disablePrivateFocusForProcess(reason: String) {
     guard !MacApp.isPrivateFocusDisabledForProcess else { return }
     MacApp.isPrivateFocusDisabledForProcess = true
-    eprint("Private SkyLight focus is unavailable or failed; falling back to the public focus path")
+    eprint("Private SkyLight focus disabled for this process (\(reason)); using the public focus path. Restart AeroSpace to retry")
 }
 
 func performNativeFocus(
