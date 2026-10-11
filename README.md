@@ -5,9 +5,10 @@
 <h1 align="center">AeroSpace α</h1>
 
 <p align="center">
-  <a href="https://github.com/nikitabobko/AeroSpace">AeroSpace</a>, the i3-like tiling window manager for macOS,<br>
-  with the upstream fixes it is waiting for, Alpha's own features,<br>
-  and the occasional private API that would never make it into the main build.
+  An alpha build of <a href="https://github.com/nikitabobko/AeroSpace">AeroSpace</a>, the i3-like tiling window manager for macOS,<br>
+  with the upstream fixes it is waiting for, new focus and single-window features,<br>
+  and multi-monitor support that works, using the occasional private API<br>
+  that would never make it into the main build.
 </p>
 
 <p align="center">
