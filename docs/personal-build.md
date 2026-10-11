@@ -151,4 +151,7 @@ With these, a rule can open a window floating, sized and centred:
 current commit against Xcode's SDK, stages it in
 `~/.local/share/aerospace-builds/<label>-<hash>/` and, with `--laptop`, copies it
 to the laptop. `aerospace-switch <label>-<hash>` (in `JasonBates/aerospace-config`)
-installs it and keeps every window on its workspace across the restart.
+installs it and keeps every window on its workspace across the restart. The
+signing identity and the laptop address are read from
+`~/.config/aerospace-build.env` (`AEROSPACE_CODESIGN_IDENTITY`,
+`AEROSPACE_LAPTOP`), which is never committed.
