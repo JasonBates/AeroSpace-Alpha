@@ -121,9 +121,18 @@ extension MonitorInfo {
         }
         // What if monitor configuration changed? (frame.origin is changed)
         rearrangeWorkspacesOnMonitors()
-        // Normally, recursion should happen only once more because we must take the value from the cache
-        // (Unless, monitor configuration data race happens)
-        return self.activeWorkspace
+        if let existing = screenPointToVisibleWorkspace[rect.topLeftCorner] {
+            return existing
+        }
+        // `rearrangeWorkspacesOnMonitors` only populates the cache for the monitors that `NSScreen.screens`
+        // reports right now. If `self` isn't one of them (a stale `MonitorInfo` snapshot during display
+        // reconfiguration, e.g. the lid opening with external monitors attached, or every display being
+        // momentarily off so `screens` is empty), retrying can never succeed: the old recursive
+        // `return self.activeWorkspace` ran until the stack guard was hit (EXC_BAD_ACCESS).
+        // Fall back to a stub workspace instead. The next refresh, with a settled screen list, puts this
+        // monitor back on its real workspace.
+        // Ported from AeroSpace-edge: https://github.com/vitorebatista/AeroSpace-edge/pull/64
+        return getStubWorkspace(for: self)
     }
 
     @MainActor
