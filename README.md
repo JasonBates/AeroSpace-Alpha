@@ -137,6 +137,8 @@ Each release on the [Releases page](https://github.com/JasonBates/AeroSpace-Alph
 2. Unzip, move `AeroSpace.app` to `/Applications` and `bin/aerospace` somewhere on your `PATH`.
 3. Launch it and grant Accessibility access when asked, as with upstream.
 
+If you are setting up with an AI assistant, give it [docs/agent-setup.md](docs/agent-setup.md): a step-by-step guide to installing Alpha, mapping Caps Lock to the modifier with Karabiner-Elements, and adding trackpad swipes with SwipeAeroSpace.
+
 Your existing `~/.aerospace.toml` works unchanged. The new keys and commands are listed above. To go back to stock AeroSpace, remove any Alpha-only keys from the config first, because stock rejects them.
 
 **Provided as is, without warranty of any kind, express or implied. Use at your own risk.** This is a personal build with no support and no issue tracker; the [MIT licence](LICENSE.txt) has the full terms.
