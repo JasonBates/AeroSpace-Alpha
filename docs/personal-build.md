@@ -1,6 +1,8 @@
-# AeroSpace: configurable width for a lone tiled window
+# AeroSpace Alpha: build notes
 
-This is my working AeroSpace build for my Mac Studio and laptop. When a workspace
+These are the working notes behind [AeroSpace Alpha](../README.md), my
+AeroSpace build for a Mac Studio and a laptop. The README gives the overview;
+this page records how each piece works and why. When a workspace
 has one tiled window, it centres that window at a configurable percentage of the
 current monitor's usable width. The percentage can change with monitor width, so
 the same configuration works across my displays.
@@ -11,11 +13,11 @@ the same configuration works across my displays.
 
 [Watch the short single-window-width demo](assets/single-window-width-demo.mp4).
 
-I am sharing the code as a working solution and proof of concept for
+The width rules were first shared as a proof of concept for
 [upstream discussion #2308](https://github.com/nikitabobko/AeroSpace/discussions/2308).
-This is not an official AeroSpace release or a fork I plan to maintain
-separately. For the standard application, documentation, and installation
-instructions, see [upstream AeroSpace](https://github.com/nikitabobko/AeroSpace).
+This is not an official AeroSpace release. For the standard application,
+documentation, and installation instructions, see
+[upstream AeroSpace](https://github.com/nikitabobko/AeroSpace).
 
 ## What this branch changes
 
@@ -49,7 +51,7 @@ it centred. The adjustment belongs only to that window and lasts until it
 closes or AeroSpace restarts. With multiple tiled windows, the same commands
 continue to resize tiles normally.
 
-The [width-rules commit](https://github.com/JasonBates/AeroSpace-single-window-width/commit/92be41f)
+The [width-rules commit](https://github.com/JasonBates/AeroSpace-Alpha/commit/92be41f)
 shows the additional implementation and tests.
 
 ## Focus Mode experiment

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="AeroSpace Alpha logo: a Greek alpha on a centred window in front of dimmed tiles">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e2948"/>
+      <stop offset="1" stop-color="#101024"/>
+    </linearGradient>
+    <linearGradient id="win" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b3660"/>
+      <stop offset="1" stop-color="#1b2446"/>
+    </linearGradient>
+    <linearGradient id="alpha" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e4e9f7"/>
+      <stop offset="1" stop-color="#8b95f5"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <g fill="#161e38" stroke="#3a4668" stroke-width="4">
+    <rect x="64" y="96" width="120" height="320" rx="14"/>
+    <rect x="328" y="96" width="120" height="150" rx="14"/>
+    <rect x="328" y="266" width="120" height="150" rx="14"/>
+  </g>
+  <rect x="136" y="116" width="240" height="280" rx="22" fill="url(#win)" stroke="#7b86f2" stroke-width="5"/>
+  <text x="256" y="334" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="230" font-weight="600" fill="url(#alpha)">α</text>
+</svg>
