@@ -20,13 +20,15 @@
 
 <br>
 
-## How it differs
+## How it differs from AeroSpace
+
+AeroSpace is a superb project: i3-style tiling on macOS, a plain-text config, a scriptable CLI, and no need to disable SIP. Alpha builds on that foundation and changes nothing about it. It adds a layer of upstream fixes that are still waiting to be merged, and a layer of features of its own on top.
 
 <p align="center">
   <img src="docs/assets/how-alpha-differs.svg" width="100%" alt="Three layers: upstream AeroSpace at the bottom, nine pending upstream fixes in the middle, Alpha's own features on top">
 </p>
 
-Alpha is upstream `main` with two layers on top. The middle layer is a set of open upstream pull requests merged as they are, so bugs that upstream has fixes for are fixed here now. The top layer is what I built for a three-monitor desk and a laptop. Everything else, from the config format to the CLI to the docs, is upstream's.
+The bottom layer is upstream `main`, unchanged. The middle layer is a set of open upstream pull requests merged as they are, so bugs that upstream already has fixes for are fixed here now. The top layer is what I built for a three-monitor desk and a laptop. Everything else, from the config format to the CLI to the docs, is upstream's, and the credit for it belongs there.
 
 One rule separates the two projects. Upstream does not use private macOS APIs, and holds to that even where the public APIs cannot do the job. Alpha uses them when there is no other way: today that is the SkyLight call that makes focus land on the right window across monitors. Those pieces can never be merged upstream, which is why this build exists.
 
