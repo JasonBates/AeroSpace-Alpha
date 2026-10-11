@@ -5,11 +5,13 @@
 <h1 align="center">AeroSpace α</h1>
 
 <p align="center">
-  A personal build of <a href="https://github.com/nikitabobko/AeroSpace">AeroSpace</a>, the i3-like tiling window manager for macOS,<br>
-  with the fixes it is waiting for and a few things it does not have.
+  <a href="https://github.com/nikitabobko/AeroSpace">AeroSpace</a>, the i3-like tiling window manager for macOS,<br>
+  with the upstream fixes it is waiting for, Alpha's own features,<br>
+  and the occasional private API that would never make it into the main build.
 </p>
 
 <p align="center">
+  <a href="https://github.com/JasonBates/AeroSpace-Alpha/releases/latest">download</a> ·
   <a href="https://github.com/nikitabobko/AeroSpace">upstream</a> ·
   <a href="docs/personal-build.md">build notes</a> ·
   <a href="LICENSE.txt">MIT</a>
@@ -25,7 +27,27 @@
 
 Alpha is upstream `main` with two layers on top. The middle layer is a set of open upstream pull requests merged as they are, so bugs that upstream has fixes for are fixed here now. The top layer is what I built for a three-monitor desk and a laptop. Everything else, from the config format to the CLI to the docs, is upstream's.
 
+One rule separates the two projects. Upstream does not use private macOS APIs, and holds to that even where the public APIs cannot do the job. Alpha uses them when there is no other way: today that is the SkyLight call that makes focus land on the right window across monitors. Those pieces can never be merged upstream, which is why this build exists.
+
+In short, compared with stock AeroSpace:
+
+- **Multi-monitor focus and movement work.** Focus lands on the window you asked for, hidden windows stay hidden, displays can reconfigure without a crash.
+- **Floating windows behave.** They can be resized, centred and placed by rule.
+- **A lone window gets a sensible width**, and Focus Mode centres and dims on demand.
+- **Workspace bars get events** instead of polling.
+
 ## What Alpha adds
+
+### Multi-monitor focus and movement that work
+
+With "Displays have separate Spaces" on and an app open on two monitors, stock AeroSpace often focuses the wrong window: you ask for the Ghostty window on the right monitor, macOS raises it, and your keystrokes go to the one on the left ([issue #101](https://github.com/nikitabobko/AeroSpace/issues/101), open since 2024). Alpha fixes this with the SkyLight call from [PR #2179](https://github.com/nikitabobko/AeroSpace/pull/2179), so `focus` and `move` across monitors land where the highlight is, every time. Around it:
+
+- Hidden windows on a middle monitor no longer flicker back into view, see [below](#hidden-windows-stay-hidden).
+- Reconfiguring displays, plugging in or waking, no longer crashes AeroSpace ([#2232](https://github.com/nikitabobko/AeroSpace/pull/2232)).
+- `move-workspace-to-monitor` chooses the replacement workspace before moving ([#1944](https://github.com/nikitabobko/AeroSpace/pull/1944)).
+- A cancelled focus request cannot steal focus from a newer one ([#2299](https://github.com/nikitabobko/AeroSpace/pull/2299)).
+
+Tested daily on three side-by-side monitors and a laptop.
 
 ### Single-window width
 
@@ -97,9 +119,21 @@ Open upstream pull requests merged unchanged, except where noted. Credit belongs
 | [#2232](https://github.com/nikitabobko/AeroSpace/pull/2232) | No crash while displays are being reconfigured. |
 | [#1944](https://github.com/nikitabobko/AeroSpace/pull/1944) | `move-workspace-to-monitor` chooses the replacement workspace before moving. |
 
+## Download
+
+Each release on the [Releases page](https://github.com/JasonBates/AeroSpace-Alpha/releases/latest) is a zip with `AeroSpace.app`, the `aerospace` CLI, man pages and shell completion. The app is signed with a Developer ID and notarized by Apple, so it opens without Gatekeeper warnings.
+
+1. Quit stock AeroSpace if it is running.
+2. Unzip, move `AeroSpace.app` to `/Applications` and `bin/aerospace` somewhere on your `PATH`.
+3. Launch it and grant Accessibility access when asked, as with upstream.
+
+Your existing `~/.aerospace.toml` works unchanged. The new keys and commands are listed above. To go back to stock AeroSpace, remove any Alpha-only keys from the config first, because stock rejects them.
+
+**Provided as is, without warranty of any kind, express or implied. Use at your own risk.** This is a personal build with no support and no issue tracker; the [MIT licence](LICENSE.txt) has the full terms.
+
 ## Things to know
 
-- **This is a personal build.** There are no releases, no issue tracker and no support. It is public so the code can be read and borrowed, and so it can be built from source.
+- **This is a personal build.** Releases appear when I rebuild for myself, not on a schedule. It is public so the code can be read and borrowed, and so the build can be downloaded.
 - **It tracks upstream.** The branch is rebased onto upstream `main`; nothing upstream is rewritten. Current base: v0.21.3-Beta.
 - **#2179 uses a private macOS API.** Upstream has chosen not to ship private APIs. Alpha calls two undocumented SkyLight functions to fix cross-monitor focus, with a guard that falls back to stock behaviour if a macOS update removes them.
 - **The config is not backward compatible.** Stock AeroSpace rejects `single-window-width-rules` and the other new keys. Remove them before going back to a stock build.
