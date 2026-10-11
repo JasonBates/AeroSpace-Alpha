@@ -67,7 +67,7 @@ codesign --verify --strict --verbose=2 "$cli"
 for bin in "$app" "$cli"; do
     flags="$(codesign -d --verbose=1 "$bin" 2>&1 | grep -E '^CodeDirectory' || true)"
     case "$flags" in
-        *"(runtime)"*) ;;
+        *runtime\)*) ;;   # "flags=0x10000(runtime)" or "0x10002(adhoc,runtime)"
         *) echo "hardened runtime flag missing on $bin: $flags" >&2; exit 1;;
     esac
 done
