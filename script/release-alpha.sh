@@ -5,6 +5,7 @@
 #       --notary-key /path/AuthKey.p8 --notary-key-id KEYID --notary-issuer ISSUER-UUID
 #
 #   --skip-notarize        sign only (local checks, dry runs)
+#   --skip-build           reuse the existing .release/AeroSpace-v<version> stage
 #   --codesign-identity -  ad-hoc signature (dry runs on CI without certificates)
 #
 # Output: .release/AeroSpace-Alpha-v<version>.zip containing AeroSpace.app, bin/aerospace,
@@ -19,6 +20,7 @@ notary_key=""
 notary_key_id=""
 notary_issuer=""
 notarize=true
+build=true
 while test $# -gt 0; do
     case $1 in
         --version) version="$2"; shift 2;;
@@ -27,6 +29,7 @@ while test $# -gt 0; do
         --notary-key-id) notary_key_id="$2"; shift 2;;
         --notary-issuer) notary_issuer="$2"; shift 2;;
         --skip-notarize) notarize=false; shift;;
+        --skip-build) build=false; shift;;
         *) echo "Unknown option $1" >&2; exit 1;;
     esac
 done
@@ -42,7 +45,9 @@ fi
 #############
 ### BUILD ###
 #############
-./build-release.sh --build-version "$version" --codesign-identity "$identity"
+if $build; then
+    ./build-release.sh --build-version "$version" --codesign-identity "$identity"
+fi
 
 stage=".release/AeroSpace-v$version"
 app="$stage/AeroSpace.app"
@@ -59,7 +64,13 @@ codesign "${sign_flags[@]}" -s "$identity" "$cli"
 codesign "${sign_flags[@]}" -s "$identity" --entitlements resources/AeroSpace.entitlements "$app"
 codesign --verify --strict --verbose=2 "$app"
 codesign --verify --strict --verbose=2 "$cli"
-codesign -d --verbose=1 "$app" 2>&1 | grep -q 'flags=0x10000(runtime)' || { echo "hardened runtime flag missing on the app" >&2; exit 1; }
+for bin in "$app" "$cli"; do
+    flags="$(codesign -d --verbose=1 "$bin" 2>&1 | grep -E '^CodeDirectory' || true)"
+    case "$flags" in
+        *"(runtime)"*) ;;
+        *) echo "hardened runtime flag missing on $bin: $flags" >&2; exit 1;;
+    esac
+done
 
 ################
 ### PACKAGE  ###
