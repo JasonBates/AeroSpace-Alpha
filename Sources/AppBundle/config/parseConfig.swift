@@ -417,11 +417,14 @@ private func parseArrayOfStrings(_ raw: OrderedJson, _ backtrace: ConfigBacktrac
 
 private func parseSingleWindowAspectRatio(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<AspectRatio?> {
     parseString(raw, backtrace).flatMap { str in
-        let parts = str.split(whereSeparator: { $0 == ":" || $0 == " " }).compactMap { Double($0) }
-        guard parts.count == 2, parts[0] > 0, parts[1] > 0 else {
+        let tokens = str.split(separator: ":", omittingEmptySubsequences: false)
+        guard tokens.count == 2,
+              let width = Double(tokens[0]), width.isFinite, width > 0,
+              let height = Double(tokens[1]), height.isFinite, height > 0
+        else {
             return .failure(.init(backtrace, "Expected format 'WIDTH:HEIGHT' (e.g. '16:9')"))
         }
-        return .success(AspectRatio(width: CGFloat(parts[0]), height: CGFloat(parts[1])))
+        return .success(AspectRatio(width: CGFloat(width), height: CGFloat(height)))
     }
 }
 

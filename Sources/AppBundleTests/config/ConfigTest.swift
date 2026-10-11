@@ -481,7 +481,7 @@ final class ConfigTest: XCTestCase {
     func testParseSingleWindowAspectRatio() {
         let result = parseConfig(
             """
-            single-window-aspect-ratio = '8 9'
+            single-window-aspect-ratio = '8:9'
             single-window-min-monitor-width = 2000
             apply-aspect-to-accordion = 'none'
             """,
@@ -492,6 +492,17 @@ final class ConfigTest: XCTestCase {
         assertEquals(result.config.applyAspectToAccordion, ApplyAspectOrientation.none)
         assertEquals(result.config.singleWindowWidth(monitorWidth: 1512, availableWidth: 1500, height: 900), nil)
         assertEquals(result.config.singleWindowWidth(monitorWidth: 2560, availableWidth: 2540, height: 900), 800)
+    }
+
+    func testParseSingleWindowAspectRatioRejectsMalformedValues() {
+        for value in ["16:garbage:9", "16:9:1", "nan:9", "inf:9", "16:"] {
+            assertEquals(
+                parseConfig("single-window-aspect-ratio = '\(value)'").strErrors,
+                ["[ERROR] single-window-aspect-ratio: Expected format 'WIDTH:HEIGHT' (e.g. '16:9')"],
+            )
+        }
+        assertEquals(parseConfig("single-window-aspect-ratio = '16:9'").config.singleWindowAspectRatio, AspectRatio(width: 16, height: 9))
+        assertEquals(parseConfig("single-window-aspect-ratio = '4:3'").config.singleWindowAspectRatio, AspectRatio(width: 4, height: 3))
     }
 
     func testSingleWindowWidthRulesSelectByMonitorWidth() {
@@ -510,6 +521,26 @@ final class ConfigTest: XCTestCase {
         assertEquals(result.config.singleWindowWidth(monitorWidth: 2560, availableWidth: 2540, height: 1400), 1270)
         let unmatched = parseConfig("single-window-width-rules = [{ min-monitor-width = 2000, width-percent = 50 }]")
         assertEquals(unmatched.config.singleWindowWidth(monitorWidth: 1512, availableWidth: 1500, height: 900), nil)
+    }
+
+    func testSingleWindowWidthRulesFallBackToAspectRatio() {
+        let result = parseConfig(
+            """
+            single-window-width-rules = [{ min-monitor-width = 2000, width-percent = 50 }]
+            single-window-aspect-ratio = '8:9'
+            single-window-min-monitor-width = 1000
+            """,
+        )
+        assertEquals(result.errors, [])
+        // Matching width rules win over the aspect ratio.
+        assertEquals(result.config.singleWindowWidth(monitorWidth: 2560, availableWidth: 2400, height: 900), 1200)
+        // An unmatched rule falls through to the aspect ratio.
+        assertEquals(result.config.singleWindowWidth(monitorWidth: 1512, availableWidth: 1500, height: 900), 800)
+        // The aspect-ratio minimum-monitor-width gate still applies.
+        assertEquals(result.config.singleWindowWidth(monitorWidth: 900, availableWidth: 880, height: 900), nil)
+
+        let withoutAspect = parseConfig("single-window-width-rules = [{ min-monitor-width = 2000, width-percent = 50 }]")
+        assertEquals(withoutAspect.config.singleWindowWidth(monitorWidth: 1512, availableWidth: 1500, height: 900), nil)
     }
 
     func testSingleWindowWidthRulesRejectInvalidEntries() {

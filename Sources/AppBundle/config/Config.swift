@@ -98,9 +98,8 @@ struct SingleWindowWidthRule: Equatable, Sendable {
 
 extension Config {
     func singleWindowWidth(monitorWidth: CGFloat, availableWidth: CGFloat, height: CGFloat) -> CGFloat? {
-        if !singleWindowWidthRules.isEmpty {
-            return singleWindowWidthRules.last(where: { monitorWidth >= CGFloat($0.minMonitorWidth) })
-                .map { availableWidth * CGFloat($0.widthPercent) / 100 }
+        if let rule = singleWindowWidthRules.last(where: { monitorWidth >= CGFloat($0.minMonitorWidth) }) {
+            return availableWidth * CGFloat(rule.widthPercent) / 100
         }
         guard let ratio = singleWindowAspectRatio,
               monitorWidth >= CGFloat(singleWindowMinMonitorWidth) else { return nil }
