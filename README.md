@@ -14,6 +14,7 @@
 <p align="center">
   <a href="https://github.com/JasonBates/AeroSpace-Alpha/releases/latest">download</a> ·
   <a href="https://github.com/nikitabobko/AeroSpace">upstream</a> ·
+  <a href="docs/agent-setup.md">setup guide</a> ·
   <a href="docs/personal-build.md">build notes</a> ·
   <a href="LICENSE.txt">MIT</a>
 </p>
