@@ -34,6 +34,8 @@ while test $# -gt 0; do
     esac
 done
 [ -n "$version" ] || { echo "--version is required" >&2; exit 1; }
+version_pattern='^[0-9]+\.[0-9]+(\.[0-9]+)?(-[A-Za-z0-9.]+)?$'
+[[ "$version" =~ $version_pattern ]] || { echo "Invalid release version: $version" >&2; exit 1; }
 [ -n "$identity" ] || { echo "--codesign-identity is required" >&2; exit 1; }
 if $notarize; then
     for v in notary_key notary_key_id notary_issuer; do
@@ -49,10 +51,16 @@ if $build; then
     ./build-release.sh --build-version "$version" --codesign-identity "$identity"
 fi
 
-stage=".release/AeroSpace-v$version"
+release_dir="$(cd .release && pwd -P)"
+stage="$release_dir/AeroSpace-v$version"
 app="$stage/AeroSpace.app"
 cli="$stage/bin/aerospace"
 [ -d "$app" ] && [ -f "$cli" ] || { echo "build-release.sh did not produce $stage" >&2; exit 1; }
+resolved_stage="$(cd "$stage" && pwd -P)"
+[ "$(dirname "$resolved_stage")" = "$release_dir" ] || { echo "release stage must resolve directly under $release_dir: $resolved_stage" >&2; exit 1; }
+stage="$resolved_stage"
+app="$stage/AeroSpace.app"
+cli="$stage/bin/aerospace"
 
 #####################################
 ### SIGN WITH THE HARDENED RUNTIME ###
