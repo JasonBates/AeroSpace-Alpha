@@ -19,9 +19,9 @@ This is not an official AeroSpace release. For the standard application,
 documentation, and installation instructions, see
 [upstream AeroSpace](https://github.com/nikitabobko/AeroSpace).
 
-## What this branch changes
+## Single-window width
 
-The branch adapts the single-window and accordion aspect-ratio work in
+Alpha adapts the single-window and accordion aspect-ratio work in
 [PR #2093](https://github.com/nikitabobko/AeroSpace/pull/2093) to the newer
 AeroSpace code, then adds `single-window-width-rules`. Each rule sets the width
 of a lone tiled window as a percentage of usable monitor width when the monitor
@@ -56,7 +56,7 @@ shows the additional implementation and tests.
 
 ## Focus Mode experiment
 
-The `focus-mode` branch adds a reversible centred view for the focused window.
+Focus Mode is a reversible centred view for the focused window.
 It uses the same width rules as a lone window, or 66% of the usable display
 width when no rule is configured. A translucent dark layer dims the other
 windows on every display. The layer does not take keyboard or mouse input.
@@ -68,8 +68,7 @@ position when Focus Mode ends. A single-display setup behaves as before.
 schematic animation, not a screen recording.
 
 The `focus-mode` command has no default shortcut. My optional binding is below;
-add it **after installing a build from this branch** (the earlier build does
-not recognise `focus-mode`):
+add it after installing Alpha (stock AeroSpace does not recognise `focus-mode`):
 
 ```toml
 ctrl-alt-cmd-z = 'focus-mode'
@@ -82,14 +81,11 @@ preserves the workspace tree and tile weights;
 for a floating window it also restores the original frame. AeroSpace full
 screen takes precedence and exits Focus Mode.
 
-To return to the earlier version, remove the binding before installing the
-previous signed `0.21.3-aspect` app and CLI. The existing width-rule keys can
-stay in the configuration because that earlier build already supports them.
 
 ## Upstream pull requests included
 
-The `focus-mode-upstream-2026-10` branch also merges these open upstream pull
-requests, which fix bugs that affect my multi-monitor setup. Each is merged
+Alpha merges these open upstream pull requests, which fix bugs that affect
+my multi-monitor setup. Each is merged
 unchanged except where noted.
 
 - [#2232](https://github.com/nikitabobko/AeroSpace/pull/2232): avoid a crash
@@ -118,9 +114,9 @@ unchanged except where noted.
   longer treated as closed (issue #1216). Resolved by hand against #2225 in
   the same function, so retired native tabs stay dead; unit tests added.
 
-## Additions on `features-2026-10`
+## Further additions
 
-The `features-2026-10` branch builds on the branch above with three additions
+Alpha also carries three additions
 and fixes for hidden windows and disappearing monitors,
 each covered by unit tests and checked live on a three-monitor Mac.
 
