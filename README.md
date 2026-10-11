@@ -33,7 +33,7 @@ In short, compared with stock AeroSpace:
 
 - **Multi-monitor focus and movement work.** Focus lands on the window you asked for, hidden windows stay hidden, displays can reconfigure without a crash.
 - **Floating windows behave.** They can be resized, centred and placed by rule.
-- **A lone window gets a sensible width**, and Focus Mode centres and dims on demand.
+- **A lone window gets a sensible width**, resizable from the keyboard, and Focus Mode centres and dims on demand.
 - **Workspace bars get events** instead of polling.
 
 ## What Alpha adds
@@ -64,11 +64,16 @@ single-window-width-rules = [
 ]
 ```
 
-`resize smart +100` and `-100` widen or narrow the lone window by 100 points and keep it centred.
+**The centred window is resizable.** `resize smart +100` and `resize smart -100` widen or narrow it by 100 points, `resize width 1400` sets an exact width, and it stays centred throughout. The adjustment belongs to that window and lasts until it closes. Bind the same keys you use for tiles; with more than one tiled window they resize tiles as before.
+
+```toml
+ctrl-alt-cmd-minus = 'resize smart -100'
+ctrl-alt-cmd-equal = 'resize smart +100'
+```
 
 ### Focus Mode
 
-`focus-mode` centres the focused window at the same width and dims every other window on every display behind a translucent layer. Press it again, click elsewhere or switch workspace and the layout returns exactly as it was, tree and tile weights intact. On three displays the window moves to the middle one.
+`focus-mode` centres the focused window at the same width and dims every other window on every display behind a translucent layer. Press it again, click elsewhere or switch workspace and the layout returns exactly as it was, tree and tile weights intact. On three displays the window moves to the middle one. The same `resize` commands widen or narrow the focused window while it is centred.
 
 <p align="center">
   <img src="docs/assets/focus-mode-demo.gif" width="720" alt="Animation: the focused window moves to the centre and the rest of the desktop dims">
