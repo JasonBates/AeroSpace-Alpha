@@ -7,15 +7,16 @@
 #
 # Puts AeroSpace.app and the CLI in ~/.local/share/aerospace-builds/<label>-<hash>/
 # (label defaults to "features"). --laptop also copies the staged build to the laptop.
-# Signing identity and laptop address come from ~/.config/aerospace-build.env.
+# Signing identity and laptop SSH target come from ~/.config/aerospace/env
+# (see personal-build.env.example).
 set -euo pipefail
 cd "$(dirname "$0")"
 
 base_version=0.21.3
-# Machine-specific values live outside the repository:
+# Machine-specific values live outside the repository (personal-build.env.example):
 #   AEROSPACE_CODESIGN_IDENTITY  e.g. "Developer ID Application: Name (TEAMID)"
-#   AEROSPACE_LAPTOP             user@host for --laptop
-env_file="${AEROSPACE_BUILD_ENV:-$HOME/.config/aerospace-build.env}"
+#   AEROSPACE_LAPTOP             SSH host or alias for --laptop
+env_file="${AEROSPACE_BUILD_ENV:-$HOME/.config/aerospace/env}"
 # shellcheck source=/dev/null
 [ -f "$env_file" ] && . "$env_file"
 identity="${AEROSPACE_CODESIGN_IDENTITY:?set AEROSPACE_CODESIGN_IDENTITY (or put it in $env_file)}"

@@ -153,5 +153,5 @@ current commit against Xcode's SDK, stages it in
 to the laptop. `aerospace-switch <label>-<hash>` (in `JasonBates/aerospace-config`)
 installs it and keeps every window on its workspace across the restart. The
 signing identity and the laptop address are read from
-`~/.config/aerospace-build.env` (`AEROSPACE_CODESIGN_IDENTITY`,
-`AEROSPACE_LAPTOP`), which is never committed.
+`~/.config/aerospace/env` (`AEROSPACE_CODESIGN_IDENTITY`, `AEROSPACE_LAPTOP`;
+template in `personal-build.env.example`), which is never committed.
