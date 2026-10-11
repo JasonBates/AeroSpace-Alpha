@@ -420,10 +420,16 @@ final class MacApp: AbstractApp {
             }
             // Second line of defence against lock screen. See the first line of defence: closedWindowsCache
             // Second and third lines of defence are technically needed only to avoid potential flickering
+            var isAppUnresponsive = false
             if frontmostAppBundleId != lockScreenAppBundleId {
-                let (stillAlive, newlyDead) = try alive.partition {
+                let (stillAlive, newlyDead) = try alive.partition { entry in
                     try job.checkCancellation()
-                    return $0.value.ax.containingWindowId() != nil && !retiredIds.contains($0.key)
+                    return isTrackedWindowAlive(
+                        isRetiredNativeTab: retiredIds.contains(entry.key),
+                        isAppUnresponsive: &isAppUnresponsive,
+                        containingWindowIdError: { entry.value.ax.containingWindowIdError() },
+                        isWindowOnScreen: { isWindowOnScreen(entry.key) },
+                    )
                 }
                 alive = stillAlive
                 for (id, window) in newlyDead {
@@ -431,7 +437,9 @@ final class MacApp: AbstractApp {
                 }
             }
 
-            for (id, window) in liveWindows where !retiredIds.contains(id) {
+            // Once the app timed out, don't send it more AX requests in this refresh: each of them
+            // would wait for the full timeout again.
+            for (id, window) in isAppUnresponsive ? [] : liveWindows where !retiredIds.contains(id) {
                 try job.checkCancellation()
                 try alive.getOrRegisterAxWindow(windowId: id, window, nsApp, job)
             }
@@ -555,6 +563,38 @@ func nativeTabReplacementCandidate(
           !liveWindowIds.contains(previousFocusedWindowId)
     else { return nil }
     return previousFocusedWindowId
+}
+
+/// Decides whether a tracked window is still alive during a refresh.
+///
+/// A retired native tab is dead regardless of what AX says: its successor has taken its place in the
+/// tree (see ``nativeTabReplacementCandidate``). Otherwise, `_AXUIElementGetWindow` failing used to mean
+/// "closed", but an app that hangs or is too busy to respond fails it with `.cannotComplete` once the AX
+/// messaging timeout expires, and its windows were garbage collected
+/// (https://github.com/nikitabobko/AeroSpace/issues/1216, upstream PR #2317). On `.cannotComplete`, ask
+/// the WindowServer whether the window is still on screen instead (windows hidden in the corner are still
+/// on screen), and once the app timed out, skip AX for the rest of the refresh.
+func isTrackedWindowAlive(
+    isRetiredNativeTab: Bool,
+    isAppUnresponsive: inout Bool,
+    containingWindowIdError: () -> AXError,
+    isWindowOnScreen: () -> Bool,
+) -> Bool {
+    if isRetiredNativeTab { return false }
+    if isAppUnresponsive { return isWindowOnScreen() }
+    switch containingWindowIdError() {
+        case .success: return true
+        // the app hangs or is too busy to respond. Don't mistake it for a closed window
+        case .cannotComplete:
+            isAppUnresponsive = true
+            return isWindowOnScreen()
+        default: return false
+    }
+}
+
+private func isWindowOnScreen(_ windowId: UInt32) -> Bool {
+    let info = (CGWindowListCopyWindowInfo(.optionIncludingWindow, windowId) as? [[String: Any]])?.first
+    return info?[kCGWindowIsOnscreen as String] as? Bool == true
 }
 
 // The old id is already retired by this point, so a cancelled splice would strand it: it can't

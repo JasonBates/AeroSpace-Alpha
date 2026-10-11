@@ -113,6 +113,10 @@ unchanged except where noted.
   One line resolved by hand to keep #2220's change as well.
 - [#2174](https://github.com/nikitabobko/AeroSpace/pull/2174): a window
   returns to its place in the layout after macOS native full screen.
+- [#2317](https://github.com/nikitabobko/AeroSpace/pull/2317): the windows of
+  an app that hangs or is too busy to answer Accessibility requests are no
+  longer treated as closed (issue #1216). Resolved by hand against #2225 in
+  the same function, so retired native tabs stay dead; unit tests added.
 
 ## Additions on `features-2026-10`
 
