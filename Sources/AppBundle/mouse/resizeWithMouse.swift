@@ -25,12 +25,17 @@ func resizedObs(_: AXObserver, ax: AXUIElement, notif: CFString, _: UnsafeMutabl
 
 @MainActor
 func resetManipulatedWithMouseIfPossible() async throws {
-    if currentlyManipulatedWithMouseWindowId != nil {
-        currentlyManipulatedWithMouseWindowId = nil
-        for workspace in Workspace.all {
-            workspace.resetResizeWeightBeforeResizeRecursive()
-        }
-        scheduleCancellableCompleteRefreshSession(.resetManipulatedWithMouse, optimisticallyPreLayoutWorkspaces: true)
+    guard let windowId = currentlyManipulatedWithMouseWindowId else { return }
+    currentlyManipulatedWithMouseWindowId = nil
+    for workspace in Workspace.all {
+        workspace.resetResizeWeightBeforeResizeRecursive()
+    }
+    defer { scheduleCancellableCompleteRefreshSession(.resetManipulatedWithMouse, optimisticallyPreLayoutWorkspaces: true) }
+    // A dropped floating window belongs to the monitor it was dropped on. The rebinding during the
+    // drag (moveWithMouse) can lag behind the pointer, and the refresh scheduled on exit would then lay the window
+    // out on the monitor of its stale workspace.
+    if let window = Window.get(byId: windowId), window.isFloating {
+        try await window.bindFloatingWindowToMonitorUnderCenter()
     }
 }
 

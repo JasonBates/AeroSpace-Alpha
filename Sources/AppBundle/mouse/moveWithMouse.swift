@@ -39,10 +39,23 @@ private func moveWithMouse(_ window: Window) async throws { // todo cover with t
 
 @MainActor
 private func moveFloatingWindow(_ window: Window) async throws {
-    guard let targetWorkspace = try await window.getCenter(.cancellable)?.monitorApproximation.activeWorkspace else { return }
-    guard let parent = window.parent else { return }
-    if targetWorkspace != parent {
-        window.bindAsFloatingWindow(to: targetWorkspace)
+    // Mark the window as dragged until the button is released (resetManipulatedWithMouseIfPossible),
+    // so that layoutFloatingWindow leaves it alone meanwhile. Otherwise a layout pass that runs after
+    // the centre has crossed onto another monitor, but before the rebinding below, pulls the window
+    // back onto its old workspace's monitor; macOS carries the drag on from there, one monitor
+    // behind the pointer, and that is where the window is dropped (visible with three monitors).
+    currentlyManipulatedWithMouseWindowId = window.windowId
+    try await window.bindFloatingWindowToMonitorUnderCenter()
+}
+
+extension Window {
+    /// Binds a floating window to the active workspace of the monitor its centre is on
+    @MainActor
+    func bindFloatingWindowToMonitorUnderCenter() async throws {
+        guard let targetWorkspace = try await getCenter(.cancellable)?.monitorApproximation.activeWorkspace else { return }
+        if targetWorkspace != nodeWorkspace {
+            bindAsFloatingWindow(to: targetWorkspace)
+        }
     }
 }
 

@@ -67,6 +67,7 @@ extension TreeNode {
                     if window.isAwaitingOnWindowDetected { continue }
                     window.lastAppliedLayoutPhysicalRect = nil
                     window.lastAppliedLayoutVirtualRect = nil
+                    if window.windowId == currentlyManipulatedWithMouseWindowId { continue } // Follows the pointer
                     try await window.layoutFloatingWindow(context)
                 }
             case .window(let window):
