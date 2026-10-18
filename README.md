@@ -36,7 +36,7 @@ One rule separates the two projects. Upstream does not use private macOS APIs, a
 In short, compared with stock AeroSpace:
 
 - **Multi-monitor focus and movement work.** Focus lands on the window you asked for, hidden windows stay hidden, displays can reconfigure without a crash.
-- **Floating windows behave.** They can be resized, centred and placed by rule.
+- **Floating windows behave.** They can be resized, centred and placed by rule, and dragged across monitors without jumping back.
 - **A lone window gets a sensible width**, resizable from the keyboard, and Focus Mode centres and dims on demand.
 - **Workspace bars get events** instead of polling.
 
@@ -92,6 +92,7 @@ ctrl-alt-cmd-z = 'focus-mode'
 
 - **`center`** centres a floating window on its monitor, shrinking it first if it is larger than the screen.
 - **`resize` works on floating windows.** The window resizes around its centre and stays inside its monitor. `width` and `height` change one side; `smart` changes the longer side and `smart-opposite` the shorter, keeping the aspect ratio.
+- **Dragging a floating window to another monitor lands it where you drop it.** Stock AeroSpace often pulls the window back to the monitor it came from ([issue #347](https://github.com/nikitabobko/AeroSpace/issues/347)), and with three monitors a drag from the first to the third reliably ends on the second. A layout pass was moving the window while the drag handler was still catching up; the window is now left alone until the mouse button is released, then bound to the monitor under it. Fix offered upstream on that issue.
 
 Together with `on-window-detected` a rule can open a window floating, sized and centred:
 
