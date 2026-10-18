@@ -5,6 +5,32 @@ import Common
 private var activeRefreshTask: Task<(), any Error>? = nil
 
 @MainActor
+private var enumerationRetryTask: Task<(), Never>? = nil
+@MainActor
+private var consecutiveEnumerationRetries = 0
+
+/// Delay before retrying a refresh after an app failed to answer the window enumeration in time:
+/// exponential backoff capped at 30 seconds, so a permanently hung app can't cause a refresh storm
+func enumerationRetryDelaySeconds(attempt: Int) -> Int {
+    min(1 << min(attempt, 5), 30)
+}
+
+/// Schedule a delayed complete refresh because some app didn't respond to the window enumeration
+/// request in time. Debounced: at most one pending retry. Upstream PR #2326, issue #1615
+@MainActor
+private func scheduleEnumerationRetry() {
+    if enumerationRetryTask != nil { return }
+    let delaySeconds = enumerationRetryDelaySeconds(attempt: consecutiveEnumerationRetries)
+    consecutiveEnumerationRetries += 1
+    enumerationRetryTask = Task.startUnstructured { @MainActor in
+        defer { enumerationRetryTask = nil }
+        try? await Task.sleep(for: .seconds(delaySeconds))
+        if Task.isCancelled { return }
+        scheduleCancellableCompleteRefreshSession(.ax("windowsEnumerationRetry"))
+    }
+}
+
+@MainActor
 func scheduleCancellableCompleteRefreshSession(
     _ event: RefreshSessionEvent,
     optimisticallyPreLayoutWorkspaces: Bool = false,
@@ -124,6 +150,14 @@ func refreshModel_nonCancellable() async {
 private func refresh() async throws {
     // Garbage collect terminated apps and windows before working with all windows
     let mapping = try await MacApp.refreshAllAndGetAliveWindowIds(frontmostAppBundleId: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+    if mapping.values.contains(where: \.incomplete) {
+        // Some app didn't answer in time (e.g. the system is under load during boot). Without a
+        // retry, its new windows stay undetected until the next AX event, which on an idle
+        // system may never come. #1615
+        scheduleEnumerationRetry()
+    } else {
+        consecutiveEnumerationRetries = 0
+    }
     // A mouse-driven native-tab switch can be observed first by this periodic refresh rather
     // than getFocusedWindow. Preserve the old tree slot before garbage collection removes it.
     var splicedWindowIds: Set<UInt32> = []

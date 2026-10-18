@@ -351,6 +351,16 @@ extension AXUIElement: AxUiElementMock {
             : nil
     }
 
+    /// Like `get`, but keeps the AXError, so callers can tell "the attribute has no value" apart from
+    /// "the app didn't respond in time" (.cannotComplete). `value` is non-nil only when `error == .success`
+    func getOrError<Attr: ReadableAttr>(_ attr: Attr) -> (value: Attr.T?, error: AXError) {
+        let state = signposter.beginInterval(#function, "attr: \(attr.key) axTaskLocalAppThreadToken: \(axTaskLocalAppThreadToken?.idForDebug)")
+        defer { signposter.endInterval(#function, state) }
+        var raw: AnyObject?
+        let error = unsafe AXUIElementCopyAttributeValue(self, attr.key as CFString, &raw)
+        return error == .success ? (raw.flatMap(attr.getter), .success) : (nil, error)
+    }
+
     @discardableResult func set<Attr: WritableAttr>(_ attr: Attr, _ value: Attr.T) -> Bool {
         if serverArgs.isReadOnly { return false }
         let state = signposter.beginInterval(#function, "attr: \(attr.key) axTaskLocalAppThreadToken: \(axTaskLocalAppThreadToken?.idForDebug)")

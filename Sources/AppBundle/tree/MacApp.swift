@@ -15,8 +15,12 @@ struct NativeTabWindowReplacement: Sendable {
 struct MacAppRefreshResult: Sendable {
     let aliveWindowIds: [UInt32]
     let nativeTabReplacement: NativeTabWindowReplacement?
+    /// The app didn't answer an AX request in time (busy, or the system is under load during boot),
+    /// so new windows of the app may be missing from aliveWindowIds. The caller schedules a retry.
+    /// https://github.com/nikitabobko/AeroSpace/issues/1615 (upstream PR #2326)
+    let incomplete: Bool
 
-    static let empty = MacAppRefreshResult(aliveWindowIds: [], nativeTabReplacement: nil)
+    static let empty = MacAppRefreshResult(aliveWindowIds: [], nativeTabReplacement: nil, incomplete: false)
 }
 
 // Potential alternative implementation
@@ -406,10 +410,14 @@ final class MacApp: AbstractApp {
         guard let thread else { return .empty }
         // Read on this actor before hopping to the dedicated AX thread, same as in getFocusedWindow.
         let staleTabCandidateId = lastNativeFocusedWindowId
-        let (alive, dead, replacement) = try await thread.runInLoop(.cancellable) { [pid, windows, retiredNativeTabWindowIds, axApp, staleTabCandidateId] (job) -> ([UInt32], [UInt32], NativeTabWindowReplacement?) in
+        let (alive, dead, replacement, incomplete) = try await thread.runInLoop(.cancellable) { [pid, windows, retiredNativeTabWindowIds, axApp, staleTabCandidateId] (job) -> ([UInt32], [UInt32], NativeTabWindowReplacement?, Bool) in
             var alive: [UInt32: AxWindow] = windows.threadGuarded
             var dead = [UInt32: AxWindow]()
-            let liveWindows = axApp.threadGuarded.get(Ax.windowsAttr) ?? []
+            // A timed-out enumeration doesn't mean the app has no windows. Keep the known set and
+            // report the refresh as incomplete so the caller retries (upstream PR #2326)
+            let (axWindows, axWindowsError) = axApp.threadGuarded.getOrError(Ax.windowsAttr)
+            let liveWindows = axWindows ?? []
+            var isAppUnresponsive = axWindowsError == .cannotComplete
             let liveWindowIds = Set(liveWindows.map(\.windowId))
             let focusedWindowId = axApp.threadGuarded.get(Ax.focusedWindowAttr)?.windowId
             var retiredIds = retiredNativeTabWindowIds.threadGuarded
@@ -442,7 +450,6 @@ final class MacApp: AbstractApp {
             }
             // Second line of defence against lock screen. See the first line of defence: closedWindowsCache
             // Second and third lines of defence are technically needed only to avoid potential flickering
-            var isAppUnresponsive = false
             var windowServerWindowIds: Set<UInt32>?
             if frontmostAppBundleId != lockScreenAppBundleId {
                 let (stillAlive, newlyDead) = try alive.partition { entry in
@@ -474,7 +481,7 @@ final class MacApp: AbstractApp {
 
             windows.threadGuarded = alive
             retiredNativeTabWindowIds.threadGuarded = retiredIds
-            return (Array(alive.keys), Array(dead.keys), replacement)
+            return (Array(alive.keys), Array(dead.keys), replacement, isAppUnresponsive)
         }
         windowsCount = alive.count
         if let replacement {
@@ -488,6 +495,7 @@ final class MacApp: AbstractApp {
         return MacAppRefreshResult(
             aliveWindowIds: alive,
             nativeTabReplacement: replacement,
+            incomplete: incomplete,
         )
     }
 
