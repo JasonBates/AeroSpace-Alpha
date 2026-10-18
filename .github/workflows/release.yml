@@ -122,7 +122,7 @@ jobs:
           set -euo pipefail
           version="$VERSION"
           zip=".release/AeroSpace-Alpha-v$version.zip"
-          base="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo unknown)"
+          base="$(git describe --tags --abbrev=0 --match 'v*.*.*' 2>/dev/null || echo unknown)"  # three components: upstream tags, not Alpha's vX.Y
           sha256="$(shasum -a 256 "$zip" | cut -d' ' -f1)"
           notes="$RUNNER_TEMP/notes.md"
           cat > "$notes" <<EOF
