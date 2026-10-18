@@ -15,6 +15,8 @@ let projectRoot: URL = {
 
 @MainActor
 func setUpWorkspacesForTests() {
+    monitorInfosForTests = nil
+    resetMonitorWorkspaceAssignmentsForTests()
     FocusMode.shared.stop()
     config = defaultConfig
     configUrl = defaultConfigUrl
