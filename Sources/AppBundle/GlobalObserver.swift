@@ -54,6 +54,7 @@ enum GlobalObserver {
         nc.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main, using: onNotif)
 
         NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { @MainActor _ in
+            FocusedWindowBorder.shared.startTracking()
             if FocusMode.shared.isActive && !FocusMode.shared.containsFocusedWindow(at: mouseLocation) {
                 FocusMode.shared.stop()
                 scheduleCancellableCompleteRefreshSession(.globalObserverLeftMouseDown)
@@ -65,6 +66,7 @@ enum GlobalObserver {
             //  resetManipulatedWithMouseIfPossible might call its own refreshSession
             //  The end of the callback calls refreshSession
             Task.startUnstructured { @MainActor in
+                FocusedWindowBorder.shared.stopTracking()
                 guard let token: RunSessionGuard = .isServerEnabled else { return }
                 if FocusMode.shared.isActive && !FocusMode.shared.containsFocusedWindow(at: mouseLocation) {
                     FocusMode.shared.stop()

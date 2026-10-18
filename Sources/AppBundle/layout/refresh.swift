@@ -206,7 +206,7 @@ private func layoutWorkspaces() async throws {
             workspace.allLeafWindowsRecursive.forEach { ($0 as! MacWindow).unhideFromCorner() } // todo as!
             try await workspace.layoutWorkspace() // Unhide tiling windows from corner
         }
-        FocusedWindowBorderPanel.shared.hide()
+        FocusedWindowBorder.shared.hide()
         HideCornerCovers.shared.hideAll()
         return
     }
@@ -241,7 +241,7 @@ private func layoutWorkspaces() async throws {
     HideCornerCovers.shared.sync(coveredSpots)
     FocusMode.shared.refreshBackdrop()
 
-    await refreshFocusedWindowBorder()
+    FocusedWindowBorder.shared.refresh()
 }
 
 @MainActor

@@ -1,12 +1,97 @@
 import AppKit
+import Common
 import SwiftUI
 
-/// A transparent, click-through overlay panel that draws a colored border around
-/// the currently focused window. Native replacement for external border tools
-/// (e.g. JankyBorders) for the common "highlight the focused window" use case.
+/// A transparent, click-through overlay panel that draws a coloured border around the focused window.
+/// A native replacement for JankyBorders for the common "highlight the focused window" case.
+/// Upstream PR #2107, reworked here for speed: the frame comes from the WindowServer rather than an
+/// Accessibility round trip to the app, the border is redrawn the moment AeroSpace's focus changes
+/// rather than after the next layout pass, and it follows the pointer at 60 Hz while a mouse button is
+/// held, so a dragged or resized window keeps its border.
+@MainActor
+final class FocusedWindowBorder {
+    static let shared = FocusedWindowBorder()
+
+    private var panel: FocusedWindowBorderPanel?
+    private var trackingTimer: Timer?
+
+    /// Redraw for the current focus and config. Cheap: one WindowServer query, no AX.
+    func refresh() {
+        guard !isUnitTest else { return }
+        guard config.focusedWindowBorder,
+              let window = focus.windowOrNil,
+              window.visualWorkspace?.isVisible == true,
+              isBorderable(window),
+              let rect = windowServerFrame(windowId: window.windowId),
+              rect.width > 0, rect.height > 0
+        else {
+            hide()
+            return
+        }
+        let panel = panel ?? FocusedWindowBorderPanel()
+        self.panel = panel
+        panel.show(
+            around: rect,
+            style: FocusedWindowBorderStyle(
+                colorHex: config.focusedWindowBorderColor,
+                width: config.focusedWindowBorderWidth,
+                opacityPercent: config.focusedWindowBorderOpacity,
+                cornerRadius: config.focusedWindowBorderRadius,
+                inset: config.focusedWindowBorderInset,
+            ),
+        )
+    }
+
+    func hide() {
+        panel?.orderOut(nil)
+    }
+
+    /// While a mouse button is held the focused window may be dragged or resized by the user. AX moved
+    /// notifications arrive a few times a second, so the border follows the WindowServer frame instead.
+    func startTracking() {
+        guard !isUnitTest, config.focusedWindowBorder, trackingTimer == nil else { return }
+        trackingTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { _ in
+            Task.startUnstructured { @MainActor in FocusedWindowBorder.shared.refresh() }
+        }
+    }
+
+    func stopTracking() {
+        trackingTimer?.invalidate()
+        trackingTimer = nil
+        refresh()
+    }
+
+    private func isBorderable(_ window: Window) -> Bool {
+        switch window.windowParentCases {
+            case .tilingContainer, .floatingWindowsContainer: true
+            case .macosMinimizedWindowsContainer, .macosFullscreenWindowsContainer,
+                 .macosHiddenAppsWindowsContainer, .macosPopupWindowsContainer, .unbound: false
+        }
+    }
+}
+
+/// The window's frame as the WindowServer has it, in AeroSpace's top-left-origin coordinates
+private func windowServerFrame(windowId: UInt32) -> Rect? {
+    guard let infos = CGWindowListCopyWindowInfo([.optionIncludingWindow], CGWindowID(windowId)) as? [[String: Any]],
+          let info = infos.first,
+          let bounds = info[kCGWindowBounds as String] as? [String: Any],
+          let x = bounds["X"] as? CGFloat, let y = bounds["Y"] as? CGFloat,
+          let width = bounds["Width"] as? CGFloat, let height = bounds["Height"] as? CGFloat
+    else { return nil }
+    return Rect(topLeftX: x, topLeftY: y, width: width, height: height)
+}
+
+struct FocusedWindowBorderStyle: Equatable {
+    let colorHex: String
+    let width: Int
+    let opacityPercent: Int
+    let cornerRadius: Int
+    let inset: Int
+}
+
 final class FocusedWindowBorderPanel: NSPanel {
-    @MainActor static var shared: FocusedWindowBorderPanel = FocusedWindowBorderPanel()
     private var hosting: NSHostingView<FocusedWindowBorderView>?
+    private var appliedStyle: FocusedWindowBorderStyle?
 
     init() {
         super.init(
@@ -23,57 +108,53 @@ final class FocusedWindowBorderPanel: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         isReleasedWhenClosed = false
         hidesOnDeactivate = false
+        animationBehavior = .none
     }
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
-    @MainActor func show(rect: Rect, colorHex: String, width: Int, opacityPercent: Int, cornerRadius: Int, inset: Int) {
-        let w = CGFloat(width)
-        // `inset` pulls the stroke that many points back INTO the window. With inset 0
-        // the stroke sits fully outside (the historical behavior). With inset > 0 the
-        // border overlaps the window's own rounded corner, so the real corner masks any
-        // mismatch between our configured radius and the window's true radius — no gap
-        // shows even when the exact per-window radius is unknown. Clamp so we never push
-        // past the inner edge of the stroke.
-        let inset = CGFloat(min(max(inset, 0), width))
+    @MainActor func show(around rect: Rect, style: FocusedWindowBorderStyle) {
+        let w = CGFloat(style.width)
+        // `inset` pulls the stroke that many points back into the window. With inset 0 the stroke sits
+        // fully outside. With inset > 0 the border overlaps the window's own rounded corner, so the real
+        // corner masks any mismatch between the configured radius and the window's true radius.
+        let inset = CGFloat(min(max(style.inset, 0), style.width))
         let grow = w - inset // net expansion beyond the window edge on every side
-        // AeroSpace Rect is top-left origin (y grows down). Convert back to Cocoa
-        // (bottom-left origin) and expand by `grow` on every side.
-        let cocoaY = mainMonitorInfo.height - rect.topLeftY - rect.height
         let frame = NSRect(
             x: rect.topLeftX - grow,
-            y: cocoaY - grow,
+            y: mainMonitorInfo.height - rect.topLeftY - rect.height - grow,
             width: rect.width + 2 * grow,
             height: rect.height + 2 * grow,
         )
-
-        // Combine the color's own alpha with the separate opacity percentage.
-        let baseColor = NSColor(argbHex: colorHex) ?? .systemGreen
-        let opacityFactor = CGFloat(min(max(opacityPercent, 0), 100)) / 100
-        let finalColor = baseColor.withAlphaComponent(baseColor.alphaComponent * opacityFactor)
-        // Outer radius = the window's apparent corner radius plus however far the stroke's
-        // outer edge sits outside the window edge (`grow`), so the outer edge stays
-        // concentric with the window corner.
-        let view = FocusedWindowBorderView(
-            color: Color(nsColor: finalColor),
-            width: w,
-            cornerRadius: CGFloat(cornerRadius) + grow,
-        )
-        if let hosting {
-            hosting.rootView = view
-        } else {
-            let hostingView = NSHostingView(rootView: view)
-            contentView?.addSubview(hostingView)
-            hosting = hostingView
+        if appliedStyle != style || hosting == nil {
+            let baseColor = NSColor(argbHex: style.colorHex) ?? .systemGreen
+            let opacityFactor = CGFloat(min(max(style.opacityPercent, 0), 100)) / 100
+            let finalColor = baseColor.withAlphaComponent(baseColor.alphaComponent * opacityFactor)
+            // Outer radius = the window's corner radius plus how far the stroke's outer edge sits
+            // outside the window edge, so the outer edge stays concentric with the window corner.
+            let view = FocusedWindowBorderView(
+                color: Color(nsColor: finalColor),
+                width: w,
+                cornerRadius: CGFloat(style.cornerRadius) + grow,
+            )
+            if let hosting {
+                hosting.rootView = view
+            } else {
+                let hostingView = NSHostingView(rootView: view)
+                hostingView.autoresizingMask = [.width, .height]
+                contentView?.addSubview(hostingView)
+                hosting = hostingView
+            }
+            appliedStyle = style
         }
-        hosting?.frame = NSRect(origin: .zero, size: frame.size)
-        setFrame(frame, display: true)
-        orderFrontRegardless()
-    }
-
-    @MainActor func hide() {
-        orderOut(nil)
+        if self.frame != frame {
+            setFrame(frame, display: true)
+            hosting?.frame = NSRect(origin: .zero, size: frame.size)
+        }
+        if !isVisible {
+            orderFrontRegardless()
+        }
     }
 }
 
@@ -89,8 +170,7 @@ struct FocusedWindowBorderView: View {
 }
 
 extension NSColor {
-    /// Parse an `0xAARRGGBB` (or `0xRRGGBB`) hex string, matching the format used
-    /// by JankyBorders config (e.g. `0xff12B981`).
+    /// Parse an `0xAARRGGBB` (or `0xRRGGBB`) hex string, matching the format used by JankyBorders (e.g. `0xff12B981`).
     convenience init?(argbHex: String) {
         var str = argbHex.trimmingCharacters(in: .whitespaces).lowercased()
         if str.hasPrefix("0x") { str.removeFirst(2) }
@@ -116,24 +196,4 @@ extension NSColor {
         }
         self.init(srgbRed: r, green: g, blue: b, alpha: a)
     }
-}
-
-/// Update (or hide) the focused-window border to match the current focus and config.
-@MainActor func refreshFocusedWindowBorder() async {
-    guard config.focusedWindowBorder, let window = focus.windowOrNil else {
-        FocusedWindowBorderPanel.shared.hide()
-        return
-    }
-    guard let rect = try? await window.getAxRect(.cancellable), rect.width > 0, rect.height > 0 else {
-        FocusedWindowBorderPanel.shared.hide()
-        return
-    }
-    FocusedWindowBorderPanel.shared.show(
-        rect: rect,
-        colorHex: config.focusedWindowBorderColor,
-        width: config.focusedWindowBorderWidth,
-        opacityPercent: config.focusedWindowBorderOpacity,
-        cornerRadius: config.focusedWindowBorderRadius,
-        inset: config.focusedWindowBorderInset,
-    )
 }

@@ -80,6 +80,7 @@ func resolveFocusAfterWindowRemoval(wasFocused: Bool, previousWindow: Window?, w
     let status = newFocus.workspace.workspaceMonitor.setActiveWorkspace(newFocus.workspace)
 
     newFocus.windowOrNil?.markAsMostRecentChild()
+    FocusedWindowBorder.shared.refresh() // Right away, not after the next layout pass
     return status
 }
 extension Window {
