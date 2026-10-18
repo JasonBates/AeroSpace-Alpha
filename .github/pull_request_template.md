@@ -1,10 +1,6 @@
-## PR checklist
+Thanks for the pull request. A few things that make it easy to merge:
 
-- [ ] Explain your changes in the relevant commit messages rather than in the PR description. The PR description must not contain more information than the commit messages (except for images and other media).
-- [ ] Each commit must explain what/why/how and motivation in its description. https://cbea.ms/git-commit/
-- [ ] Don't forget to link the appropriate issues/discussions in commit messages (if applicable).
-- [ ] Each commit must be an atomic change (a PR may contain several commits). Don't introduce new functional changes together with refactorings in the same commit.
-- [ ] `./test.sh` exits with non-zero exit code.
-- [ ] Avoid merge commits, always rebase and force push.
-
-Failure to follow the checklist with no apparent reasons will result in silent PR rejection.
+- Say what the change does and why in the commit message; the PR description can be short.
+- Keep each commit to one change, and keep refactoring separate from behaviour changes.
+- `./test.sh` passes.
+- If the change would also help stock AeroSpace, mention whether you have offered it upstream.

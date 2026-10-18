@@ -167,3 +167,13 @@ installs it and keeps every window on its workspace across the restart. The
 signing identity and the laptop address are read from
 `~/.config/aerospace/env` (`AEROSPACE_CODESIGN_IDENTITY`, `AEROSPACE_LAPTOP`;
 template in `personal-build.env.example`), which is never committed.
+
+## After a rebase onto upstream
+
+Upstream's `.github/` carries automation for its own contribution policy: a
+workflow that closes and locks issues from anyone but its maintainers, one that
+labels every outside pull request `not-actionable`, issue and discussion
+templates that point at upstream, and a `FUNDING.yml` for upstream's sponsors.
+Alpha accepts discussions, issues and pull requests, so after each rebase delete
+those again and keep Alpha's own `pull_request_template.md`. The `build.yml` and
+`release.yml` workflows stay.
