@@ -119,7 +119,7 @@ Parked windows also stop costing GPU time. A parked window keeps a one-point sli
 
 ### A native focused-window border
 
-AeroSpace can draw the focused-window highlight itself, from upstream [PR #2107](https://github.com/nikitabobko/AeroSpace/pull/2107): a coloured, rounded, click-through border that follows every focus change, move, resize and workspace switch. It replaces JankyBorders for the common case and needs no extra process. Off by default.
+AeroSpace can draw the focused-window highlight itself: a coloured, rounded, click-through border that follows every focus change, move, resize and workspace switch. It started as upstream [PR #2107](https://github.com/nikitabobko/AeroSpace/pull/2107) and was reworked here for speed: the frame comes from the WindowServer rather than an Accessibility round trip, focus changes redraw at once, and while a mouse button is held the border follows the window at 60 Hz, so a dragged or resized window keeps its border. It replaces JankyBorders and needs no extra process. Off by default.
 
 ```toml
 focused-window-border = true
@@ -156,7 +156,7 @@ Open upstream pull requests merged unchanged, except where noted. Credit belongs
 | [#2310](https://github.com/nikitabobko/AeroSpace/pull/2310) | `balance-sizes` resets the closed-windows cache. |
 | [#2319](https://github.com/nikitabobko/AeroSpace/pull/2319) | `move` can wrap around all monitors ([discussion #2301](https://github.com/nikitabobko/AeroSpace/discussions/2301)). |
 | [#2248](https://github.com/nikitabobko/AeroSpace/pull/2248) | `move` moves floating windows ([#1417](https://github.com/nikitabobko/AeroSpace/issues/1417)). |
-| [#2107](https://github.com/nikitabobko/AeroSpace/pull/2107) | Native focused-window border, off by default. |
+| [#2107](https://github.com/nikitabobko/AeroSpace/pull/2107) | Native focused-window border, off by default. Reworked here to read frames from the WindowServer and follow the mouse. |
 
 ## Download
 

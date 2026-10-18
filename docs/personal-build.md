@@ -141,7 +141,10 @@ unchanged except where noted.
   floating windows, by `--floating-pixels` or a tenth of the monitor.
 - [#2107](https://github.com/nikitabobko/AeroSpace/pull/2107): a native
   focused-window border, off by default (`focused-window-border = true`).
-  Hooked into `layoutWorkspaces` next to the Focus Mode backdrop refresh.
+  Reworked for speed (`FocusedWindowBorder`): the frame comes from
+  `CGWindowListCopyWindowInfo` instead of an AX call, `setFocus` redraws at
+  once, and a 60 Hz timer follows the window while a mouse button is held.
+  Also refreshed at the end of `layoutWorkspaces`.
 
 ## Further additions
 
