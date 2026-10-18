@@ -113,6 +113,32 @@ unchanged except where noted.
   an app that hangs or is too busy to answer Accessibility requests are no
   longer treated as closed (issue #1216). Resolved by hand against #2225 in
   the same function, so retired native tabs stay dead; unit tests added.
+- [#2326](https://github.com/nikitabobko/AeroSpace/pull/2326): when an app
+  does not answer the window enumeration in time (issue #1615), the refresh
+  is retried with exponential backoff instead of leaving its windows
+  undetected. Ported by hand onto #2317's liveness check, so the PR's own
+  liveness enum is not needed; backoff unit-tested.
+- [#2280](https://github.com/nikitabobko/AeroSpace/pull/2280): macOS focus is
+  adopted only from windows on visible workspaces, so activating an app with
+  windows on two monitors no longer pulls a hidden workspace onto the other
+  monitor.
+- [#2316](https://github.com/nikitabobko/AeroSpace/pull/2316): apps that
+  macOS 27 reports with process id -1 (Xcode 27 Device Hub, Java apps started
+  through a launcher script) are detected and managed. Resolved by hand
+  against the native-tab code: closures capture the resolved pid.
+- [#2167](https://github.com/nikitabobko/AeroSpace/pull/2167): a window's
+  frame is written only when the layout changed it. Focus Mode had to record
+  the frame it applies rather than the tile rect, or the tile frame was never
+  written back when Focus Mode ended; FocusModeCommandTest caught it.
+- [#2310](https://github.com/nikitabobko/AeroSpace/pull/2310): `balance-sizes`
+  resets the closed-windows cache.
+- [#2319](https://github.com/nikitabobko/AeroSpace/pull/2319): `move` can wrap
+  around all monitors with `--boundaries-action wrap-around-all-monitors`.
+- [#2248](https://github.com/nikitabobko/AeroSpace/pull/2248): `move` moves
+  floating windows, by `--floating-pixels` or a tenth of the monitor.
+- [#2107](https://github.com/nikitabobko/AeroSpace/pull/2107): a native
+  focused-window border, off by default (`focused-window-border = true`).
+  Hooked into `layoutWorkspaces` next to the Focus Mode backdrop refresh.
 
 ## Further additions
 
@@ -138,6 +164,15 @@ side-by-side monitors, macOS and some apps (Activity Monitor) pull the parked
 window onto the neighbour, AeroSpace parks it again, and it flickers at the
 bottom of that monitor. Such a monitor now parks its hidden windows in the
 nearest clean outer corner of another monitor.
+
+Each parking corner that has windows in it is covered by an opaque,
+click-through strip one point wide and 160 points tall (`HideCornerCovers`).
+A parked window keeps a one-point column on screen, because macOS keeps its
+title bar visible, and that column keeps `NSWindow.occlusionState` at
+`.visible`, so browsers and Electron apps render their hidden windows at full
+rate ([upstream discussion #2323](https://github.com/nikitabobko/AeroSpace/discussions/2323)).
+With the strip in front, every parked window reports itself as occluded.
+`hidden-windows-occlusion-cover = false` disables the covers.
 
 It also fixes a crash when a monitor disappears. During display
 reconfiguration, such as closing the lid with external displays attached or

@@ -26,7 +26,7 @@
 AeroSpace is a superb project: i3-style tiling on macOS, a plain-text config, a scriptable CLI, and no need to disable SIP. Alpha builds on that foundation and changes nothing about it. It adds a layer of upstream fixes that are still waiting to be merged, and a layer of features of its own on top.
 
 <p align="center">
-  <img src="docs/assets/how-alpha-differs.svg" width="100%" alt="Three layers: upstream AeroSpace at the bottom, nine pending upstream fixes in the middle, Alpha's own features on top">
+  <img src="docs/assets/how-alpha-differs.svg" width="100%" alt="Three layers: upstream AeroSpace at the bottom, eighteen pending upstream fixes in the middle, Alpha's own features on top">
 </p>
 
 The bottom layer is upstream `main`, unchanged. The middle layer is a set of open upstream pull requests merged as they are, so bugs that upstream already has fixes for are fixed here now. The top layer is what I built for a three-monitor desk and a laptop. Everything else, from the config format to the CLI to the docs, is upstream's, and the credit for it belongs there.
@@ -35,10 +35,12 @@ One rule separates the two projects. Upstream does not use private macOS APIs, a
 
 In short, compared with stock AeroSpace:
 
-- **Multi-monitor focus and movement work.** Focus lands on the window you asked for, hidden windows stay hidden, displays can reconfigure without a crash.
-- **Floating windows behave.** They can be resized, centred and placed by rule, and dragged across monitors without jumping back.
+- **Multi-monitor focus and movement work.** Focus lands on the window you asked for, hidden windows stay hidden and stop costing GPU time, a workspace on one monitor no longer flips because of an app on another, and displays can reconfigure without a crash.
+- **Floating windows behave.** They can be resized, centred, nudged from the keyboard and placed by rule, and dragged across monitors without jumping back.
 - **A lone window gets a sensible width**, resizable from the keyboard, and Focus Mode centres and dims on demand.
+- **A native focused-window border**, if you want one, with no extra daemon.
 - **Workspace bars get events** instead of polling.
+- **Apps that go quiet are not mistaken for closed ones**, and apps macOS 27 reports with no process are still managed.
 
 ## What Alpha adds
 
@@ -51,6 +53,8 @@ With "Displays have separate Spaces" on and an app open on two monitors, stock A
 - A monitor that macOS has already dropped, as when the lid closes with external displays attached or every display is briefly off, no longer crashes AeroSpace in an endless retry; it gets a placeholder workspace until the next refresh. Fix from [AeroSpace-edge](https://github.com/vitorebatista/AeroSpace-edge) ([PR #64](https://github.com/vitorebatista/AeroSpace-edge/pull/64)).
 - `move-workspace-to-monitor` chooses the replacement workspace before moving ([#1944](https://github.com/nikitabobko/AeroSpace/pull/1944)).
 - A cancelled focus request cannot steal focus from a newer one ([#2299](https://github.com/nikitabobko/AeroSpace/pull/2299)).
+- Switching workspaces on one monitor no longer silently changes the workspace on another when an app has windows on both ([#2280](https://github.com/nikitabobko/AeroSpace/pull/2280)).
+- `move --boundaries all-monitors-outer-frame --boundaries-action wrap-around-all-monitors` carries a window from the outer edge of the monitor row round to the opposite monitor ([#2319](https://github.com/nikitabobko/AeroSpace/pull/2319)).
 
 Tested daily on three side-by-side monitors and a laptop.
 
@@ -92,6 +96,7 @@ ctrl-alt-cmd-z = 'focus-mode'
 
 - **`center`** centres a floating window on its monitor, shrinking it first if it is larger than the screen.
 - **`resize` works on floating windows.** The window resizes around its centre and stays inside its monitor. `width` and `height` change one side; `smart` changes the longer side and `smart-opposite` the shorter, keeping the aspect ratio.
+- **`move` nudges a floating window** in the given direction, by `--floating-pixels <n>` or a tenth of the monitor when the flag is omitted ([#2248](https://github.com/nikitabobko/AeroSpace/pull/2248)).
 - **Dragging a floating window to another monitor lands it where you drop it.** Stock AeroSpace often pulls the window back to the monitor it came from ([issue #347](https://github.com/nikitabobko/AeroSpace/issues/347)), and with three monitors a drag from the first to the third reliably ends on the second. A layout pass was moving the window while the drag handler was still catching up; the window is now left alone until the mouse button is released, then bound to the monitor under it. Fix offered upstream on that issue.
 
 Together with `on-window-detected` a rule can open a window floating, sized and centred:
@@ -109,6 +114,20 @@ Together with `on-window-detected` a rule can open a window floating, sized and 
 ### Hidden windows stay hidden
 
 AeroSpace parks the windows of invisible workspaces in a bottom corner of their monitor. When a monitor sits between two others, both of its bottom corners touch a neighbour, macOS pulls the parked window back onto that neighbour, and it flickers at the edge of the screen. Such a monitor now parks hidden windows in the nearest clean outer corner of another monitor.
+
+Parked windows also stop costing GPU time. A parked window keeps a one-point sliver on screen, so macOS reports it as visible and browsers, Electron apps and games keep rendering it at full rate; one Firefox page on a hidden workspace was measured at a third of a core ([discussion #2323](https://github.com/nikitabobko/AeroSpace/discussions/2323)). Alpha covers each parking corner with a one-point opaque strip, so parked windows count as occluded and the apps throttle themselves. `hidden-windows-occlusion-cover = false` turns it off.
+
+### A native focused-window border
+
+AeroSpace can draw the focused-window highlight itself, from upstream [PR #2107](https://github.com/nikitabobko/AeroSpace/pull/2107): a coloured, rounded, click-through border that follows every focus change, move, resize and workspace switch. It replaces JankyBorders for the common case and needs no extra process. Off by default.
+
+```toml
+focused-window-border = true
+focused-window-border-color = '0xff12B981'  # 0xAARRGGBB, as in JankyBorders
+focused-window-border-width = 4
+focused-window-border-radius = 10
+focused-window-border-inset = 0             # pull the stroke into the window to hide corner-radius mismatches
+```
 
 ### Aspect ratio for a lone window
 
@@ -130,6 +149,14 @@ Open upstream pull requests merged unchanged, except where noted. Credit belongs
 | [#2232](https://github.com/nikitabobko/AeroSpace/pull/2232) | No crash while displays are being reconfigured. |
 | [#1944](https://github.com/nikitabobko/AeroSpace/pull/1944) | `move-workspace-to-monitor` chooses the replacement workspace before moving. |
 | [#2317](https://github.com/nikitabobko/AeroSpace/pull/2317) | The windows of an app that hangs or is too busy to answer Accessibility requests are no longer treated as closed ([#1216](https://github.com/nikitabobko/AeroSpace/issues/1216)). Merged by hand with #2225's native-tab handling. |
+| [#2326](https://github.com/nikitabobko/AeroSpace/pull/2326) | When an app does not answer the window enumeration in time, as under load after boot, the refresh is retried with backoff instead of leaving its windows undetected ([#1615](https://github.com/nikitabobko/AeroSpace/issues/1615)). Ported by hand onto #2317. |
+| [#2280](https://github.com/nikitabobko/AeroSpace/pull/2280) | macOS focus is adopted only from windows on visible workspaces, so activating an app with windows on two monitors no longer pulls a hidden workspace onto the other monitor. |
+| [#2316](https://github.com/nikitabobko/AeroSpace/pull/2316) | Apps that macOS 27 reports with process id -1, such as Xcode 27 Device Hub and Java apps launched through a script, are detected and managed ([discussion #2270](https://github.com/nikitabobko/AeroSpace/discussions/2270)). Resolved by hand against the native-tab code. |
+| [#2167](https://github.com/nikitabobko/AeroSpace/pull/2167) | A window's frame is written only when the layout changed it, which ends the resize loop with apps that refuse the imposed frame (Xcode 27 Device Hub) and spares AX traffic. |
+| [#2310](https://github.com/nikitabobko/AeroSpace/pull/2310) | `balance-sizes` resets the closed-windows cache. |
+| [#2319](https://github.com/nikitabobko/AeroSpace/pull/2319) | `move` can wrap around all monitors ([discussion #2301](https://github.com/nikitabobko/AeroSpace/discussions/2301)). |
+| [#2248](https://github.com/nikitabobko/AeroSpace/pull/2248) | `move` moves floating windows ([#1417](https://github.com/nikitabobko/AeroSpace/issues/1417)). |
+| [#2107](https://github.com/nikitabobko/AeroSpace/pull/2107) | Native focused-window border, off by default. |
 
 ## Download
 
