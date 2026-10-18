@@ -558,6 +558,43 @@ final class ConfigTest: XCTestCase {
                      ["[ERROR] single-window-width-rules[0].width-percent: Expected an integer from 1 to 100"])
     }
 
+    func testParseFocusedWindowBorder() { // upstream PR #2107
+        let defaults = parseConfig("")
+        assertEquals(defaults.errors, [])
+        assertEquals(defaults.config.focusedWindowBorder, false)
+        assertEquals(defaults.config.focusedWindowBorderWidth, 4)
+        let result = parseConfig(
+            """
+            focused-window-border = true
+            focused-window-border-color = '0x80ff0000'
+            focused-window-border-width = 6
+            focused-window-border-opacity = 50
+            focused-window-border-radius = 12
+            focused-window-border-inset = 2
+            """,
+        )
+        assertEquals(result.errors, [])
+        assertEquals(result.config.focusedWindowBorder, true)
+        assertEquals(result.config.focusedWindowBorderColor, "0x80ff0000")
+        assertEquals(result.config.focusedWindowBorderWidth, 6)
+        assertEquals(result.config.focusedWindowBorderOpacity, 50)
+        assertEquals(result.config.focusedWindowBorderRadius, 12)
+        assertEquals(result.config.focusedWindowBorderInset, 2)
+        assertEquals(parseConfig("focused-window-border = 'yes'").strErrors, ["[ERROR] focused-window-border: Expected type is 'Bool'. But actual type is 'String'"])
+    }
+
+    func testParseBorderColorHex() { // upstream PR #2107
+        let argb = NSColor(argbHex: "0x80ff0000").orDie().usingColorSpace(.sRGB).orDie()
+        assertEquals(argb.alphaComponent, CGFloat(0x80) / 255)
+        assertEquals(argb.redComponent, 1)
+        assertEquals(argb.greenComponent, 0)
+        let rgb = NSColor(argbHex: "#12B981").orDie().usingColorSpace(.sRGB).orDie()
+        assertEquals(rgb.alphaComponent, 1)
+        assertEquals(rgb.blueComponent, CGFloat(0x81) / 255)
+        assertNil(NSColor(argbHex: "0x12B9"))
+        assertNil(NSColor(argbHex: "green"))
+    }
+
     func testParseGaps() {
         let result1 = parseConfig(
             """
