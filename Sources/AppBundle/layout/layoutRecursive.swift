@@ -75,7 +75,9 @@ extension TreeNode {
                 if window.windowId != currentlyManipulatedWithMouseWindowId {
                     lastAppliedLayoutVirtualRect = virtual
                     if let focusFrame = FocusMode.shared.frame(for: window, in: context.workspace) {
-                        lastAppliedLayoutPhysicalRect = physicalRect
+                        // Record the frame actually applied, not the tile rect, so the tiled frame is
+                        // written again when Focus Mode ends (the redundant-write skip below compares rects)
+                        lastAppliedLayoutPhysicalRect = focusFrame
                         window.setAxFrame(focusFrame.topLeftCorner, focusFrame.size)
                     } else if window.isFullscreen && window == context.workspace.rootTilingContainer.mostRecentWindowRecursive {
                         lastAppliedLayoutPhysicalRect = nil
