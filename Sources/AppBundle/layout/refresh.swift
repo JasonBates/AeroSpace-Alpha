@@ -207,6 +207,7 @@ private func layoutWorkspaces() async throws {
             try await workspace.layoutWorkspace() // Unhide tiling windows from corner
         }
         FocusedWindowBorderPanel.shared.hide()
+        HideCornerCovers.shared.hideAll()
         return
     }
     await FocusMode.shared.syncWithFocus()
@@ -223,12 +224,21 @@ private func layoutWorkspaces() async throws {
         workspace.allLeafWindowsRecursive.forEach { ($0 as! MacWindow).unhideFromCorner() } // todo as!
         try await workspace.layoutWorkspace()
     }
+    var coveredSpots: [HideCornerCoverSpot: Rect] = [:]
     for workspace in Workspace.all where !workspace.isVisible {
         let spot = monitorToHideSpot[workspace.workspaceMonitor.rect.topLeftCorner]
-        for window in workspace.allLeafWindowsRecursive {
+        let windows = workspace.allLeafWindowsRecursive
+        for window in windows {
             try await (window as! MacWindow).hideInCorner(spot?.corner ?? .bottomRightCorner, on: spot?.monitor) // todo as!
         }
+        if config.hiddenWindowsOcclusionCover && !windows.isEmpty {
+            let corner = spot?.corner ?? .bottomRightCorner
+            let monitor = spot?.monitor ?? workspace.workspaceMonitor
+            coveredSpots[HideCornerCoverSpot(monitorTopLeft: monitor.rect.topLeftCorner, corner: corner)] =
+                hideCornerCoverRect(visibleRect: monitor.visibleRect, corner: corner)
+        }
     }
+    HideCornerCovers.shared.sync(coveredSpots)
     FocusMode.shared.refreshBackdrop()
 
     await refreshFocusedWindowBorder()

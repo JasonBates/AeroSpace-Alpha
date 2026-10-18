@@ -46,6 +46,11 @@ on-focused-monitor-changed = ['move-mouse monitor-lazy-center']
 # Also see: https://nikitabobko.github.io/AeroSpace/goodies#disable-hide-app
 automatically-unhide-macos-hidden-apps = false
 
+# Cover the one-point sliver of windows parked in a hide corner with an opaque, click-through strip, so macOS
+# reports them as occluded and apps that throttle on occlusion (browsers, Electron) stop rendering them.
+# Fallback value (if you omit the key): hidden-windows-occlusion-cover = true
+hidden-windows-occlusion-cover = true
+
 # Draw a colored border around the currently focused window.
 # Native alternative to external tools like JankyBorders for the focused-window case.
 # Fallback value (if you omit the key): focused-window-border = false

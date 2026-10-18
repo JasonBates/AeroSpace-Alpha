@@ -44,6 +44,7 @@ struct Config: ConvenienceMutable {
     var startAtLogin: Bool = false
     var autoReloadConfig: Bool = false
     var automaticallyUnhideMacosHiddenApps: Bool = false
+    var hiddenWindowsOcclusionCover: Bool = true
     var focusedWindowBorder: Bool = false
     var focusedWindowBorderColor: String = "0xff12B981"
     var focusedWindowBorderWidth: Int = 4

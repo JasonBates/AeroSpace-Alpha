@@ -558,6 +558,13 @@ final class ConfigTest: XCTestCase {
                      ["[ERROR] single-window-width-rules[0].width-percent: Expected an integer from 1 to 100"])
     }
 
+    func testParseHiddenWindowsOcclusionCover() {
+        assertEquals(parseConfig("").config.hiddenWindowsOcclusionCover, true)
+        let result = parseConfig("hidden-windows-occlusion-cover = false")
+        assertEquals(result.errors, [])
+        assertEquals(result.config.hiddenWindowsOcclusionCover, false)
+    }
+
     func testParseFocusedWindowBorder() { // upstream PR #2107
         let defaults = parseConfig("")
         assertEquals(defaults.errors, [])

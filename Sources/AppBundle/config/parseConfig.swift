@@ -145,6 +145,7 @@ private let configParser: [String: any ParserProtocol<Config>] = [
     "start-at-login": Parser(\.startAtLogin, parseBool),
     "auto-reload-config": Parser(\.autoReloadConfig, parseBool),
     "automatically-unhide-macos-hidden-apps": Parser(\.automaticallyUnhideMacosHiddenApps, parseBool),
+    "hidden-windows-occlusion-cover": Parser(\.hiddenWindowsOcclusionCover, parseBool),
     "focused-window-border": Parser(\.focusedWindowBorder, parseBool),
     "focused-window-border-color": Parser(\.focusedWindowBorderColor, parseString),
     "focused-window-border-width": Parser(\.focusedWindowBorderWidth, parseInt),

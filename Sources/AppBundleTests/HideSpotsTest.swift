@@ -6,6 +6,14 @@ final class HideSpotsTest: XCTestCase {
         Rect(topLeftX: x, topLeftY: y, width: width, height: height)
     }
 
+    func testHideCornerCoverIsAOnePointStripAlongTheParkingEdge() {
+        let visible = rect(2560, 25, 2560, 1400)
+        assertEquals(hideCornerCoverRect(visibleRect: visible, corner: .bottomRightCorner), rect(5119, 1265, 1, 160))
+        assertEquals(hideCornerCoverRect(visibleRect: visible, corner: .bottomLeftCorner), rect(2560, 1265, 1, 160))
+        let short = rect(0, 0, 800, 100)
+        assertEquals(hideCornerCoverRect(visibleRect: short, corner: .bottomRightCorner), rect(799, 0, 1, 100))
+    }
+
     func testSingleMonitorUsesItsOwnCorner() {
         assertEquals(hideSpots([rect(0, 0)]), [HideSpot(corner: .bottomRightCorner, monitorIndex: 0)])
     }
