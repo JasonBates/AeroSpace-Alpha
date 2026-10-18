@@ -118,10 +118,13 @@ unchanged except where noted.
   is retried with exponential backoff instead of leaving its windows
   undetected. Ported by hand onto #2317's liveness check, so the PR's own
   liveness enum is not needed; backoff unit-tested.
-- [#2280](https://github.com/nikitabobko/AeroSpace/pull/2280): macOS focus is
-  adopted only from windows on visible workspaces, so activating an app with
-  windows on two monitors no longer pulls a hidden workspace onto the other
-  monitor.
+- [#2280](https://github.com/nikitabobko/AeroSpace/pull/2280): activating an
+  app with windows on two monitors no longer pulls a hidden workspace onto the
+  other monitor. Narrowed from the PR, which ignored every macOS focus on an
+  invisible workspace and so would have stopped Cmd-Tab, Dock and notification
+  clicks from bringing a hidden workspace up: the off-screen window is ignored
+  only while the same app has a window on a visible workspace
+  (`isActivationArtifact`, unit-tested).
 - [#2316](https://github.com/nikitabobko/AeroSpace/pull/2316): apps that
   macOS 27 reports with process id -1 (Xcode 27 Device Hub, Java apps started
   through a launcher script) are detected and managed. Resolved by hand
