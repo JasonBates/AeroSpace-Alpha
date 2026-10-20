@@ -19,7 +19,7 @@ This is not an official AeroSpace release. For the standard application,
 documentation, and installation instructions, see
 [upstream AeroSpace](https://github.com/nikitabobko/AeroSpace).
 
-## Adaptive workspace bounds
+## Adaptive widescreen layouts
 
 The adaptive policy is disabled by default and can be enabled with a scalar
 boolean or per monitor. My monitor-specific form is:

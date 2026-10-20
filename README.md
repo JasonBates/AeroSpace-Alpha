@@ -6,7 +6,7 @@
 
 <p align="center">
   An extended alpha build of <a href="https://github.com/nikitabobko/AeroSpace">AeroSpace</a>, the i3-like tiling window manager for macOS,<br>
-  with the upstream fixes it is waiting for, new focus and single-window features,<br>
+  with pending upstream fixes, adaptive widescreen layouts and Focus Mode,<br>
   and multi-monitor support that works, using the occasional private API<br>
   that would never make it into the main build.
 </p>
@@ -14,7 +14,7 @@
 <p align="center">
   <a href="https://github.com/JasonBates/AeroSpace-Alpha/releases/latest">download</a> ·
   <a href="https://github.com/nikitabobko/AeroSpace">upstream</a> ·
-  <a href="docs/agent-setup.md">setup guide</a> ·
+  <a href="docs/quick-start.md">quick start</a> ·
   <a href="docs/personal-build.md">build notes</a> ·
   <a href="LICENSE.txt">MIT</a>
 </p>
@@ -33,62 +33,48 @@ The bottom layer is upstream `main`, unchanged. The middle layer is a set of ope
 
 One rule separates the two projects. Upstream does not use private macOS APIs, and holds to that even where the public APIs cannot do the job. Alpha uses them when there is no other way: today that is the SkyLight call that makes focus land on the right window across monitors. Those pieces can never be merged upstream, which is why this build exists.
 
-In short, compared with stock AeroSpace:
+Alpha adds:
 
 - **Multi-monitor focus and movement work.** Focus lands on the window you asked for, hidden windows stay hidden and stop costing GPU time, a workspace on one monitor no longer flips because of an app on another, and displays can reconfigure without a crash.
 - **Floating windows behave.** They can be resized, centred, nudged from the keyboard and placed by rule, and dragged across monitors without jumping back.
-- **Workspace bounds adapt to the tiling structure.** On selected monitors, a lone window keeps narrow centred bounds, two columns or a stack of at least two rows use wider centred bounds, three or more columns use the full usable width, and a single structural row keeps centred top and bottom margins.
-- **A lone window gets a sensible width**, resizable from the keyboard, and Focus Mode centres and dims on demand.
+- **Adaptive widescreen layouts.** Windows stay comfortably centred on a large display, with more space opening up as you add columns or rows.
+- **Focus Mode.** Centre the window you are working in and dim the rest, then return to your layout.
 - **A native focused-window border**, if you want one, with no extra daemon.
 - **Workspace bars get events** instead of polling.
 - **Apps that go quiet are not mistaken for closed ones**, and apps macOS 27 reports with no process are still managed.
 
 ## What Alpha adds
 
-### Adaptive workspace bounds
+### Adaptive widescreen layouts
 
-Adaptive layout is an opt-in, per-monitor policy for the whole tiled workspace.
-One structural column uses 33% of the usable monitor width, two use 66%, and
-three or more use the full width. A one-column stack of two or more rows also
-uses the two-column width, capped there as the stack grows. One structural row
-uses 90% of the usable height; two or more use the full height. The rectangle is centred on both axes.
-"Usable" means the monitor rectangle after the configured outer gaps, and the
-usual inner gaps still separate tiles.
+A large monitor should feel comfortable with one window and useful with six.
+Alpha adjusts the space used by your layout as you add windows or move them
+between rows and columns.
 
-```toml
-[adaptive-layout]
-    enabled = [{ monitor."DELL U3225QE" = true }, false]
-    one-column-width-percent = 33
-    two-column-width-percent = 66
-    single-row-height-percent = 90
-```
+<p align="center">
+  <img src="docs/assets/adaptive-widescreen-demo.gif" width="960" alt="Animated schematic: one centred window becomes two side by side, then three across; one moves below the other two, the windows form vertical stacks, and six windows fill three columns and two rows.">
+</p>
 
-`enabled` accepts either a boolean or the same monitor-matcher array used by
-gaps; the final boolean is the fallback. Percentages must be from 1 to 100, and
-the one-column percentage cannot exceed the two-column percentage. Adaptive
-layout is off by default, so existing configurations and layout behaviour are
-unchanged until it is enabled.
+*Illustrated layouts, not a screen recording. [Watch the video](docs/assets/adaptive-widescreen-demo.mp4) · [View a still](docs/assets/adaptive-widescreen-demo-preview.png).*
 
-Columns and rows come from the actual tiling tree. A horizontal tiles container
-adds its children's columns, a vertical one adds their rows, and an accordion
-uses the largest child footprint, so changing focus does not change the outer
-bounds. Floating windows, windows still awaiting placement rules, and empty
-nested containers do not count. Uneven tile proportions are retained when the
-bounded area changes, including when a workspace moves between monitors.
+- **One window:** a narrow, centred working area.
+- **Two columns, or a vertical stack:** a wider area with side margins.
+- **Three or more columns:** use the full width.
+- **One row:** keep space above and below. **Multiple rows:** use the full height.
 
-This sets the area offered to the tiling tree; it is not a strict maximum for
-each window. An app can enforce a minimum size or refuse the requested frame,
-and a leaf in a nested layout receives its share of the bounded area. AeroSpace
-full screen still fills the usable monitor, and Focus Mode still uses its
-existing single-window width rule, or its 66% fallback. Leaving either restores
-the adaptive layout and its tile proportions.
+These choices work independently: two windows above a third keep the side
+margins while using the full height. Resize the splits as usual; uneven
+proportions survive layout changes. Focus Mode and fullscreen remain available.
 
-On an adaptive monitor this policy takes precedence over
-`single-window-width-rules` for normal tiling. A lone tiled window remains
-resizable with `resize smart` and `resize width`, using the adaptive one-column
-width as its base. The width adjustment belongs to the window and is shared
-with Focus Mode, so a Focus Mode width change also affects that window when it
-returns to a lone adaptive layout.
+Enable this on the displays you choose and adjust the percentages to suit you.
+The animation uses 33% and 66% widths, with 90% height for a single row. Normal
+window gaps remain. See the [large-monitor setup](docs/quick-start.md#add-margins-on-a-large-display)
+for the four config lines, or the [build notes](docs/personal-build.md#adaptive-widescreen-layouts)
+for how layouts are counted and resized.
+
+On other displays, the starter config centres a lone window at 66% width, or
+50% on displays at least 2000 macOS display points wide. Multiple windows use
+the normal tiling area. Both modes support resizing from the keyboard.
 
 ### Multi-monitor focus and movement that work
 
@@ -105,46 +91,25 @@ With "Displays have separate Spaces" on and an app open on two monitors, stock A
 
 Tested daily on three side-by-side monitors and a laptop.
 
-### Single-window width
-
-A lone tiled window no longer fills the screen. `single-window-width-rules` gives it a percentage of the usable width, chosen by monitor size, and keeps it centred. On a 27-inch display a text editor at 50% is readable; on the laptop the same rule gives 66%.
-
-These rules continue to apply on monitors where adaptive layout is disabled,
-and they remain the width source for Focus Mode. On a monitor where adaptive
-layout is enabled, its one-column percentage is the normal tiling width instead.
-
-<p align="center">
-  <img src="docs/assets/single-window-width-demo.gif" width="720" alt="Animation: a lone window shrinks to half the display width and centres itself">
-</p>
-
-```toml
-single-window-width-rules = [
-  { min-monitor-width = 0,    width-percent = 66 },
-  { min-monitor-width = 2000, width-percent = 50 },
-]
-```
-
-**The centred window is resizable.** `resize smart +100` and `resize smart -100` widen or narrow it by 100 points, `resize width 1400` sets an exact width, and it stays centred throughout. The adjustment belongs to that window and lasts until it closes. Bind the same keys you use for tiles; with more than one tiled window they resize tiles as before.
-
-```toml
-ctrl-alt-cmd-minus = 'resize smart -100'
-ctrl-alt-cmd-equal = 'resize smart +100'
-```
-
 ### Focus Mode
 
-`focus-mode` centres the focused window at the same width and dims every other window on every display behind a translucent layer. Press it again, click elsewhere or switch workspace and the layout returns exactly as it was, tree and tile weights intact. On three displays the window moves to the middle one. The same `resize` commands widen or narrow the focused window while it is centred.
+Press **Option+Return** in the starter config to centre the focused window and
+dim the others. Press it again, click outside, or switch workspace to return to
+the tiled layout. Width and height can be resized while focused.
 
 <p align="center">
-  <img src="docs/assets/focus-mode-demo.gif" width="720" alt="Animation: the focused window moves to the centre and the rest of the desktop dims">
+  <img src="docs/assets/focus-mode-demo.gif" width="720" alt="Animation: each window in a tiled layout is centred and highlighted in turn, then restored to its original position.">
 </p>
 
+The starter shortcut keeps the window on its current display:
+
 ```toml
-ctrl-alt-cmd-z = 'focus-mode'
+alt-enter = 'focus-mode --stay-on-monitor'
 ```
 
-On a laptop, use `focus-mode --stay-on-monitor` to centre the window on its
-workspace's own display, including when external monitors are connected.
+Use `focus-mode` without that option to bring the window to the middle display
+on a three-monitor desk, or the main display with two monitors. Existing users
+can bind either command to their preferred shortcut.
 
 ### Floating windows that behave
 
