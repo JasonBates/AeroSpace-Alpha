@@ -37,12 +37,57 @@ In short, compared with stock AeroSpace:
 
 - **Multi-monitor focus and movement work.** Focus lands on the window you asked for, hidden windows stay hidden and stop costing GPU time, a workspace on one monitor no longer flips because of an app on another, and displays can reconfigure without a crash.
 - **Floating windows behave.** They can be resized, centred, nudged from the keyboard and placed by rule, and dragged across monitors without jumping back.
+- **Workspace bounds adapt to the tiling structure.** On selected monitors, one or two structural columns keep centred side margins, three or more use the full usable width, and a single structural row keeps centred top and bottom margins.
 - **A lone window gets a sensible width**, resizable from the keyboard, and Focus Mode centres and dims on demand.
 - **A native focused-window border**, if you want one, with no extra daemon.
 - **Workspace bars get events** instead of polling.
 - **Apps that go quiet are not mistaken for closed ones**, and apps macOS 27 reports with no process are still managed.
 
 ## What Alpha adds
+
+### Adaptive workspace bounds
+
+Adaptive layout is an opt-in, per-monitor policy for the whole tiled workspace.
+One structural column uses 33% of the usable monitor width, two use 66%, and
+three or more use the full width. One structural row uses 90% of the usable
+height; two or more use the full height. The rectangle is centred on both axes.
+"Usable" means the monitor rectangle after the configured outer gaps, and the
+usual inner gaps still separate tiles.
+
+```toml
+[adaptive-layout]
+    enabled = [{ monitor."DELL U3225QE" = true }, false]
+    one-column-width-percent = 33
+    two-column-width-percent = 66
+    single-row-height-percent = 90
+```
+
+`enabled` accepts either a boolean or the same monitor-matcher array used by
+gaps; the final boolean is the fallback. Percentages must be from 1 to 100, and
+the one-column percentage cannot exceed the two-column percentage. Adaptive
+layout is off by default, so existing configurations and layout behaviour are
+unchanged until it is enabled.
+
+Columns and rows come from the actual tiling tree. A horizontal tiles container
+adds its children's columns, a vertical one adds their rows, and an accordion
+uses the largest child footprint, so changing focus does not change the outer
+bounds. Floating windows, windows still awaiting placement rules, and empty
+nested containers do not count. Uneven tile proportions are retained when the
+bounded area changes, including when a workspace moves between monitors.
+
+This sets the area offered to the tiling tree; it is not a strict maximum for
+each window. An app can enforce a minimum size or refuse the requested frame,
+and a leaf in a nested layout receives its share of the bounded area. AeroSpace
+full screen still fills the usable monitor, and Focus Mode still uses its
+existing single-window width rule, or its 66% fallback. Leaving either restores
+the adaptive layout and its tile proportions.
+
+On an adaptive monitor this policy takes precedence over
+`single-window-width-rules` for normal tiling. A lone tiled window remains
+resizable with `resize smart` and `resize width`, using the adaptive one-column
+width as its base. The width adjustment belongs to the window and is shared
+with Focus Mode, so a Focus Mode width change also affects that window when it
+returns to a lone adaptive layout.
 
 ### Multi-monitor focus and movement that work
 
@@ -61,6 +106,10 @@ Tested daily on three side-by-side monitors and a laptop.
 ### Single-window width
 
 A lone tiled window no longer fills the screen. `single-window-width-rules` gives it a percentage of the usable width, chosen by monitor size, and keeps it centred. On a 27-inch display a text editor at 50% is readable; on the laptop the same rule gives 66%.
+
+These rules continue to apply on monitors where adaptive layout is disabled,
+and they remain the width source for Focus Mode. On a monitor where adaptive
+layout is enabled, its one-column percentage is the normal tiling width instead.
 
 <p align="center">
   <img src="docs/assets/single-window-width-demo.gif" width="720" alt="Animation: a lone window shrinks to half the display width and centres itself">

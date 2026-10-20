@@ -161,6 +161,7 @@ private let configParser: [String: any ParserProtocol<Config>] = [
     modeConfigRootKey: Parser(\.modes, skipParsing(Config().modes)), // Parsed manually
 
     "gaps": Parser(\.gaps, parseGaps),
+    "adaptive-layout": Parser(\.adaptiveLayout, parseAdaptiveLayout),
     "focus-follows-mouse": Parser(\.focusFollowsMouse, parseFocusFollowsMouse),
     "single-window-width-rules": Parser(\.singleWindowWidthRules, parseSingleWindowWidthRules),
     "single-window-aspect-ratio": Parser(\.singleWindowAspectRatio, parseSingleWindowAspectRatio),

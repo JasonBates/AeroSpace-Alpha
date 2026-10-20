@@ -64,6 +64,7 @@ struct Config: ConvenienceMutable {
     var onFocusedMonitorChanged: Shell<any Command> = .empty
 
     var gaps: Gaps = .zero
+    var adaptiveLayout: AdaptiveLayoutConfig = .default
     var singleWindowWidthRules: [SingleWindowWidthRule] = []
     var singleWindowAspectRatio: AspectRatio? = nil
     var singleWindowMinMonitorWidth: Int = 0
@@ -72,6 +73,20 @@ struct Config: ConvenienceMutable {
     var modes: [String: Mode] = [:]
     var onWindowDetected: [WindowDetectedCallback] = []
     var onModeChanged: Shell<any Command> = .empty
+}
+
+struct AdaptiveLayoutConfig: ConvenienceMutable, Equatable, Sendable {
+    var enabled: DynamicConfigValue<Bool>
+    var oneColumnWidthPercent: Int
+    var twoColumnWidthPercent: Int
+    var singleRowHeightPercent: Int
+
+    static let `default` = AdaptiveLayoutConfig(
+        enabled: .constant(false),
+        oneColumnWidthPercent: 33,
+        twoColumnWidthPercent: 66,
+        singleRowHeightPercent: 90,
+    )
 }
 
 struct FocusFollowsMouse: ConvenienceMutable {

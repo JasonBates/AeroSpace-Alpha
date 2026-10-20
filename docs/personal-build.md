@@ -2,10 +2,10 @@
 
 These are the working notes behind [AeroSpace Alpha](../README.md), my
 AeroSpace build for a Mac Studio and a laptop. The README gives the overview;
-this page records how each piece works and why. When a workspace
-has one tiled window, it centres that window at a configurable percentage of the
-current monitor's usable width. The percentage can change with monitor width, so
-the same configuration works across my displays.
+this page records how each piece works and why. It can constrain the whole
+tiling workspace according to its structural rows and columns on selected
+monitors, while retaining the earlier centred width rule for a lone window on
+other monitors and in Focus Mode.
 
 ![Illustration of a lone tiled window centred at 50% width on a standard 16:9 monitor](assets/single-window-width.svg)
 
@@ -18,6 +18,58 @@ The width rules were first shared as a proof of concept for
 This is not an official AeroSpace release. For the standard application,
 documentation, and installation instructions, see
 [upstream AeroSpace](https://github.com/nikitabobko/AeroSpace).
+
+## Adaptive workspace bounds
+
+The adaptive policy is disabled by default and can be enabled with a scalar
+boolean or per monitor. My monitor-specific form is:
+
+```toml
+[adaptive-layout]
+enabled = [{ monitor."DELL U3225QE" = true }, false]
+one-column-width-percent = 33
+two-column-width-percent = 66
+single-row-height-percent = 90
+```
+
+The last boolean is the fallback for monitors that do not match. Each
+percentage must be from 1 to 100, and the one-column width cannot exceed the
+two-column width. When enabled, one structural column occupies 33% of the
+usable monitor width, two occupy 66%, and three or more occupy all of it. One
+structural row occupies 90% of the usable height; two or more occupy all of it.
+The result is centred horizontally and vertically. The usable rectangle already
+has outer gaps removed, and layout applies the configured inner gaps inside it.
+
+The structure is calculated recursively from the tiling tree. A window counts
+as one column by one row. Horizontal tiles add columns and take the largest row
+count; vertical tiles take the largest column count and add rows. An accordion
+takes the largest footprint among its children, which prevents a focus change
+from moving the workspace bounds. Floating windows, windows still awaiting an
+`on-window-detected` result, and nested containers with no placed tiled windows
+are excluded from both the count and the space allocation.
+
+The bounded rectangle is applied once at the workspace boundary. Tile
+proportions inside it survive area-only changes, monitor moves, and enabling or
+disabling the policy. The preservation cache includes the container's
+orientation, layout and participating child identities, and it scales the live
+weights rather than old copies; keyboard-resized and nested uneven splits
+therefore remain meaningful. A changed child set follows the normal topology
+adjustment unless that would collapse a positive tile after its inner gap, in
+which case the surviving positive weights are scaled proportionally.
+
+Adaptive bounds are a layout target, not a hard per-window maximum. An app's
+minimum size or refusal to accept an Accessibility frame can make its actual
+window exceed the target, and nested leaves receive only their portion of the
+workspace rectangle. AeroSpace full screen and Focus Mode remain explicit leaf
+overrides. The underlying adaptive workspace geometry and weights stay intact,
+so leaving either returns to the adaptive arrangement.
+
+For normal tiling on an enabled monitor, adaptive layout takes precedence over
+`single-window-width-rules`. A lone window's `resize smart` and `resize width`
+commands use the adaptive one-column width as their base. Focus Mode keeps its
+existing width rule, or 66% fallback, and uses the same per-window width
+adjustment; resizing in Focus Mode therefore carries into a later lone adaptive
+layout for that window.
 
 ## Single-window width
 
@@ -44,6 +96,9 @@ Studio's 2560-point displays a 50%-width lone window. The optional PR #2093
 sizing of an accordion (a stack of overlapping windows) is disabled here, so
 multiple tiled windows use the normal layout. AeroSpace full screen still
 fills the display. The width rules can be edited for other monitors and setups.
+On a monitor with adaptive layout enabled, its one-column percentage replaces
+this rule for normal tiling. The rule still applies on other monitors and in
+Focus Mode.
 
 While a tiled window is alone, my `resize smart +100` and
 `resize smart -100` bindings widen or narrow it by 100 display points and keep

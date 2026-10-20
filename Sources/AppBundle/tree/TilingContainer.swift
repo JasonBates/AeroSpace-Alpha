@@ -5,6 +5,7 @@ final class TilingContainer: TreeNode, NonLeafTreeNodeObject { // todo consider 
     fileprivate var _orientation: Orientation
     var orientation: Orientation { _orientation }
     var layout: Layout
+    var adaptiveLayoutProportionCache: AdaptiveLayoutProportionCache?
 
     @MainActor
     init(parent: NonLeafTreeNodeObject, adaptiveWeight: CGFloat, _ orientation: Orientation, _ layout: Layout, index: Int) {
@@ -22,6 +23,14 @@ final class TilingContainer: TreeNode, NonLeafTreeNodeObject { // todo consider 
     static func newVTiles(parent: NonLeafTreeNodeObject, adaptiveWeight: CGFloat, index: Int) -> TilingContainer {
         TilingContainer(parent: parent, adaptiveWeight: adaptiveWeight, .v, .tiles, index: index)
     }
+}
+
+struct AdaptiveLayoutProportionCache: Equatable {
+    let orientation: Orientation
+    let layout: Layout
+    let participatingChildren: [ObjectIdentifier]
+    let dimension: CGFloat
+    let adaptiveLayoutEnabled: Bool
 }
 
 extension TilingContainer {

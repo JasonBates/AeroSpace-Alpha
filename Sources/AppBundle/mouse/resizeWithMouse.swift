@@ -42,7 +42,7 @@ func resetManipulatedWithMouseIfPossible() async throws {
 private let adaptiveWeightBeforeResizeWithMouseKey = TreeNodeUserDataKey<CGFloat>(key: "adaptiveWeightBeforeResizeWithMouseKey")
 
 @MainActor
-private func resizeWithMouse(_ window: Window) async throws { // todo cover with tests
+func resizeWithMouse(_ window: Window) async throws {
     resetClosedWindowsCache()
     switch window.windowParentCases {
         case .unbound: return

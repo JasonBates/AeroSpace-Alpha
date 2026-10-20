@@ -558,6 +558,77 @@ final class ConfigTest: XCTestCase {
                      ["[ERROR] single-window-width-rules[0].width-percent: Expected an integer from 1 to 100"])
     }
 
+    func testParseAdaptiveLayoutScalarAndPerMonitorEnabledForms() {
+        let scalar = parseConfig(
+            """
+            [adaptive-layout]
+                enabled = true
+                one-column-width-percent = 40
+                two-column-width-percent = 75
+                single-row-height-percent = 85
+            """,
+        )
+        assertEquals(scalar.errors, [])
+        assertEquals(
+            scalar.config.adaptiveLayout,
+            AdaptiveLayoutConfig(
+                enabled: .constant(true),
+                oneColumnWidthPercent: 40,
+                twoColumnWidthPercent: 75,
+                singleRowHeightPercent: 85,
+            ),
+        )
+
+        let perMonitor = parseConfig(
+            """
+            [adaptive-layout]
+                enabled = [{ monitor."DELL U3225QE" = true }, false]
+            """,
+        )
+        assertEquals(perMonitor.errors, [])
+        assertEquals(
+            perMonitor.config.adaptiveLayout.enabled,
+            .perMonitor(
+                [PerMonitorValue(description: .pattern("DELL U3225QE")!, value: true)],
+                default: false,
+            ),
+        )
+        assertEquals(perMonitor.config.adaptiveLayout.oneColumnWidthPercent, 33)
+        assertEquals(perMonitor.config.adaptiveLayout.twoColumnWidthPercent, 66)
+        assertEquals(perMonitor.config.adaptiveLayout.singleRowHeightPercent, 90)
+    }
+
+    func testParseAdaptiveLayoutRejectsInvalidPercentagesAndUnknownKeys() {
+        assertEquals(
+            parseConfig("adaptive-layout.one-column-width-percent = 0").strErrors,
+            ["[ERROR] adaptive-layout.one-column-width-percent: Expected an integer from 1 to 100"],
+        )
+        assertEquals(
+            parseConfig("adaptive-layout.two-column-width-percent = 101").strErrors,
+            ["[ERROR] adaptive-layout.two-column-width-percent: Expected an integer from 1 to 100"],
+        )
+        assertEquals(
+            parseConfig("adaptive-layout.single-row-height-percent = -1").strErrors,
+            ["[ERROR] adaptive-layout.single-row-height-percent: Expected an integer from 1 to 100"],
+        )
+        assertEquals(
+            parseConfig("adaptive-layout.mystery = true").strErrors,
+            ["[ERROR] adaptive-layout.mystery: Unknown key"],
+        )
+
+        let reversedWidths = parseConfig(
+            """
+            [adaptive-layout]
+                one-column-width-percent = 70
+                two-column-width-percent = 60
+            """,
+        )
+        assertEquals(
+            reversedWidths.strErrors,
+            ["[ERROR] adaptive-layout.one-column-width-percent: Must be less than or equal to 'two-column-width-percent'"],
+        )
+    }
+
     func testParseHiddenWindowsOcclusionCover() {
         assertEquals(parseConfig("").config.hiddenWindowsOcclusionCover, true)
         let result = parseConfig("hidden-windows-occlusion-cover = false")

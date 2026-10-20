@@ -8,29 +8,45 @@ extension Workspace {
         // If monitors are aligned vertically and the monitor below has smaller width, then macOS may not allow the
         // window on the upper monitor to take full width. rect.height - 1 resolves this problem
         // But I also faced this problem in monitors horizontal configuration. ¯\_(ツ)_/¯
-        var point = rect.topLeftCorner
-        var width = rect.width
-        let height = rect.height - 1
-        var virtual = rect
-        if shouldApplyAspectRatio(to: rootTilingContainer),
-           let constrainedWidth = config.singleWindowWidth(
-               monitorWidth: workspaceMonitor.width,
-               availableWidth: width,
-               height: height,
-           )
+        let adaptiveLayoutEnabled = config.adaptiveLayout.enabled.getValue(for: workspaceMonitor)
+        var layoutRect = rect
+        if adaptiveLayoutEnabled {
+            if let footprint = rootTilingContainer.tilingFootprint {
+                layoutRect = adaptiveWorkspaceRect(available: rect, footprint: footprint, config: config.adaptiveLayout)
+                let participatingWindows = rootTilingContainer.allLeafWindowsRecursive.filter { !$0.isAwaitingOnWindowDetected }
+                if footprint.columns == 1, let loneWindow = participatingWindows.singleOrNil() {
+                    let width = loneWindow.singleWindowWidth(base: layoutRect.width, available: rect.width)
+                    layoutRect = Rect(
+                        topLeftX: rect.topLeftX + (rect.width - width) / 2,
+                        topLeftY: layoutRect.topLeftY,
+                        width: width,
+                        height: layoutRect.height,
+                    )
+                }
+            }
+        } else if shouldApplyAspectRatio(to: rootTilingContainer),
+                  let constrainedWidth = config.singleWindowWidth(
+                      monitorWidth: workspaceMonitor.width,
+                      availableWidth: rect.width,
+                      height: rect.height - 1,
+                  )
         {
             let loneWindow = rootTilingContainer.hasSingleLeafWindowRecursive
                 ? rootTilingContainer.anyLeafWindowRecursive : nil
-            let targetWidth = loneWindow?.singleWindowWidth(base: constrainedWidth, available: width)
-                ?? min(constrainedWidth, width)
-            if targetWidth < width {
-                let xOffset = (width - targetWidth) / 2
-                point = CGPoint(x: rect.topLeftX + xOffset, y: rect.topLeftY)
-                virtual = Rect(topLeftX: rect.topLeftX + xOffset, topLeftY: rect.topLeftY, width: targetWidth, height: rect.height)
-                width = targetWidth
+            let targetWidth = loneWindow?.singleWindowWidth(base: constrainedWidth, available: rect.width)
+                ?? min(constrainedWidth, rect.width)
+            if targetWidth < rect.width {
+                let xOffset = (rect.width - targetWidth) / 2
+                layoutRect = Rect(topLeftX: rect.topLeftX + xOffset, topLeftY: rect.topLeftY, width: targetWidth, height: rect.height)
             }
         }
-        try await layoutRecursive(point, width: width, height: height, virtual: virtual, LayoutContext(self))
+        try await layoutRecursive(
+            layoutRect.topLeftCorner,
+            width: layoutRect.width,
+            height: layoutRect.height - 1,
+            virtual: layoutRect,
+            LayoutContext(self, adaptiveLayoutEnabled: adaptiveLayoutEnabled),
+        )
     }
 }
 
@@ -116,11 +132,13 @@ extension TreeNode {
 private struct LayoutContext {
     let workspace: Workspace
     let resolvedGaps: ResolvedGaps
+    let adaptiveLayoutEnabled: Bool
 
     @MainActor
-    init(_ workspace: Workspace) {
+    init(_ workspace: Workspace, adaptiveLayoutEnabled: Bool) {
         self.workspace = workspace
         self.resolvedGaps = ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitor)
+        self.adaptiveLayoutEnabled = adaptiveLayoutEnabled
     }
 }
 
@@ -170,15 +188,26 @@ extension TilingContainer {
     /// callbacks are left out: reserving space for a window that is about to be moved elsewhere
     /// makes its siblings jump, and the space is handed back a moment later.
     @MainActor
-    private var layoutChildren: [TreeNode] {
-        children.filter { ($0 as? Window)?.isAwaitingOnWindowDetected != true }
+    private func layoutChildren(adaptiveLayoutEnabled: Bool) -> [TreeNode] {
+        children.filter {
+            ($0 as? Window)?.isAwaitingOnWindowDetected != true &&
+                (!adaptiveLayoutEnabled || $0.tilingFootprint != nil)
+        }
     }
 
     @MainActor
     fileprivate func layoutTiles(_ point: CGPoint, width: CGFloat, height: CGFloat, virtual: Rect, _ context: LayoutContext) async throws {
         var point = point
         var virtualPoint = virtual.topLeftCorner
-        let children = layoutChildren
+        let children = layoutChildren(adaptiveLayoutEnabled: context.adaptiveLayoutEnabled)
+        let rawGap = context.resolvedGaps.inner.get(orientation).toDouble()
+
+        preserveAdaptiveProportionsIfNeeded(
+            children: children,
+            dimension: orientation == .h ? width : height,
+            innerGap: rawGap,
+            adaptiveLayoutEnabled: context.adaptiveLayoutEnabled,
+        )
 
         guard let delta = ((orientation == .h ? width : height) - CGFloat(children.sumOfDouble { $0.getWeight(orientation) }))
             .div(children.count) else { return }
@@ -186,7 +215,6 @@ extension TilingContainer {
         let lastIndex = children.indices.last
         for (i, child) in children.enumerated() {
             child.setWeight(orientation, child.getWeight(orientation) + delta)
-            let rawGap = context.resolvedGaps.inner.get(orientation).toDouble()
             // Gaps. Consider 4 cases:
             // 1. Multiple children. Layout first child
             // 2. Multiple children. Layout last child
@@ -213,7 +241,14 @@ extension TilingContainer {
     @MainActor
     fileprivate func layoutAccordion(_ point: CGPoint, width: CGFloat, height: CGFloat, virtual: Rect, _ context: LayoutContext) async throws {
         guard let mostRecentChild else { return }
-        let children = layoutChildren
+        let children = layoutChildren(adaptiveLayoutEnabled: context.adaptiveLayoutEnabled)
+        adaptiveLayoutProportionCache = AdaptiveLayoutProportionCache(
+            orientation: orientation,
+            layout: layout,
+            participatingChildren: children.map(ObjectIdentifier.init),
+            dimension: orientation == .h ? width : height,
+            adaptiveLayoutEnabled: context.adaptiveLayoutEnabled,
+        )
         let mruIndex: Int = children.firstIndex { $0 === mostRecentChild } ?? 0
         for (index, child) in children.enumerated() {
             let padding = CGFloat(config.accordionPadding)
@@ -243,6 +278,77 @@ extension TilingContainer {
                         context,
                     )
             }
+        }
+    }
+
+    @MainActor
+    private func preserveAdaptiveProportionsIfNeeded(
+        children: [TreeNode],
+        dimension: CGFloat,
+        innerGap: CGFloat,
+        adaptiveLayoutEnabled: Bool,
+    ) {
+        let nextCache = AdaptiveLayoutProportionCache(
+            orientation: orientation,
+            layout: layout,
+            participatingChildren: children.map(ObjectIdentifier.init),
+            dimension: dimension,
+            adaptiveLayoutEnabled: adaptiveLayoutEnabled,
+        )
+        let previousCache = adaptiveLayoutProportionCache
+        adaptiveLayoutProportionCache = nextCache
+
+        let currentWeights = children.map { $0.getWeight(orientation) }
+        let totalWeight = currentWeights.reduce(0, +)
+        guard totalWeight > 0, currentWeights.allSatisfy({ $0 > 0 }) else { return }
+        let wasOrIsAdaptive = adaptiveLayoutEnabled || previousCache?.adaptiveLayoutEnabled == true
+        let topologyIsUnchanged = previousCache?.orientation == nextCache.orientation &&
+            previousCache?.layout == nextCache.layout &&
+            previousCache?.participatingChildren == nextCache.participatingChildren
+        let additiveDelta = (dimension - totalWeight).div(children.count)
+        let additiveWouldCollapseAChild = additiveDelta.map { delta in
+            currentWeights.enumerated().contains { index, weight in
+                let requiredGap = innerGap -
+                    (index == children.indices.first ? innerGap / 2 : 0) -
+                    (index == children.indices.last ? innerGap / 2 : 0)
+                return weight + delta <= requiredGap
+            }
+        } ?? false
+        guard wasOrIsAdaptive,
+              (topologyIsUnchanged && previousCache?.dimension != dimension || additiveWouldCollapseAChild)
+        else { return }
+
+        let scale = dimension / totalWeight
+        let proportionalWeights = currentWeights.map { $0 * scale }
+        let requiredGaps = children.indices.map { index in
+            innerGap -
+                (index == children.indices.first ? innerGap / 2 : 0) -
+                (index == children.indices.last ? innerGap / 2 : 0)
+        }
+        let proportionalWouldCollapseAChild = zip(proportionalWeights, requiredGaps)
+            .contains { weight, requiredGap in weight <= requiredGap }
+        if proportionalWouldCollapseAChild {
+            let contentWeights = zip(currentWeights, requiredGaps).map { weight, requiredGap in
+                weight - requiredGap
+            }
+            let availableContent = dimension - requiredGaps.reduce(0, +)
+            let totalContentWeight = contentWeights.reduce(0, +)
+            if availableContent > 0,
+               totalContentWeight > 0,
+               contentWeights.allSatisfy({ $0 > 0 })
+            {
+                let contentScale = availableContent / totalContentWeight
+                for index in children.indices {
+                    children[index].setWeight(
+                        orientation,
+                        requiredGaps[index] + contentWeights[index] * contentScale,
+                    )
+                }
+                return
+            }
+        }
+        for (child, weight) in zip(children, proportionalWeights) {
+            child.setWeight(orientation, weight)
         }
     }
 }

@@ -26,20 +26,37 @@ struct ResizeCommand: Command {
 
         if let window = target.windowOrNil,
            args.dimension.val == .smart || args.dimension.val == .width,
-           let workspace = window.nodeWorkspace,
-           ((workspace.rootTilingContainer.hasSingleLeafWindowRecursive &&
-                   workspace.rootTilingContainer.anyLeafWindowRecursive === window) ||
-               FocusMode.shared.frame(for: window, in: workspace) != nil)
+           let workspace = window.nodeWorkspace
         {
-            let monitor = FocusMode.shared.frame(for: window, in: workspace) != nil
+            let isInFocusMode = FocusMode.shared.frame(for: window, in: workspace) != nil
+            let isAdaptiveLayoutEnabled = config.adaptiveLayout.enabled.getValue(for: workspace.workspaceMonitor)
+            let isAdaptiveLoneTilingWindow = workspace.rootTilingContainer.allLeafWindowsRecursive
+                .filter { !$0.isAwaitingOnWindowDetected }
+                .singleOrNil() === window
+            let isLegacyLoneTilingWindow = workspace.rootTilingContainer.hasSingleLeafWindowRecursive &&
+                workspace.rootTilingContainer.anyLeafWindowRecursive === window
+            let monitor = isInFocusMode
                 ? FocusMode.shared.destinationMonitor(for: workspace.workspaceMonitor, among: monitorInfos)
                 : workspace.workspaceMonitor
             let rect = monitor.visibleRectPaddedByOuterGaps
-            if let baseWidth = config.singleWindowWidth(
-                monitorWidth: monitor.width,
-                availableWidth: rect.width,
-                height: rect.height - 1,
-            ) {
+            let baseWidth: CGFloat? = if isInFocusMode {
+                config.singleWindowWidth(
+                    monitorWidth: monitor.width,
+                    availableWidth: rect.width,
+                    height: rect.height - 1,
+                ) ?? rect.width * 0.66
+            } else if isAdaptiveLayoutEnabled && isAdaptiveLoneTilingWindow {
+                rect.width * CGFloat(config.adaptiveLayout.oneColumnWidthPercent) / 100
+            } else if !isAdaptiveLayoutEnabled && isLegacyLoneTilingWindow {
+                config.singleWindowWidth(
+                    monitorWidth: monitor.width,
+                    availableWidth: rect.width,
+                    height: rect.height - 1,
+                )
+            } else {
+                nil
+            }
+            if let baseWidth {
                 let currentWidth = window.singleWindowWidth(base: baseWidth, available: rect.width)
                 let requestedWidth: CGFloat = switch args.units.val {
                     case .set(let unit): CGFloat(unit)
