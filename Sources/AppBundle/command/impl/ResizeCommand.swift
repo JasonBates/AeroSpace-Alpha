@@ -13,14 +13,14 @@ struct ResizeCommand: Command {
            let workspace = window.nodeWorkspace,
            let frame = FocusMode.shared.frame(for: window, in: workspace)
         {
-            let monitor = FocusMode.shared.destinationMonitor(for: workspace.workspaceMonitor, among: monitorInfos)
-            let fullHeight = monitor.visibleRectPaddedByOuterGaps.height - 1
+            let geometry = FocusMode.shared.baseGeometry(for: workspace)
+            let fullHeight = geometry.available.height - 1
             let requestedHeight: CGFloat = switch args.units.val {
                 case .set(let unit): CGFloat(unit)
                 case .add(let unit): frame.height + CGFloat(unit)
                 case .subtract(let unit): frame.height - CGFloat(unit)
             }
-            window.focusModeHeightAdjustment = min(fullHeight, max(min(200, fullHeight), requestedHeight)) - fullHeight
+            window.focusModeHeightAdjustment = min(fullHeight, max(min(200, fullHeight), requestedHeight)) - geometry.frame.height
             return .succ
         }
 
@@ -35,16 +35,11 @@ struct ResizeCommand: Command {
                 .singleOrNil() === window
             let isLegacyLoneTilingWindow = workspace.rootTilingContainer.hasSingleLeafWindowRecursive &&
                 workspace.rootTilingContainer.anyLeafWindowRecursive === window
-            let monitor = isInFocusMode
-                ? FocusMode.shared.destinationMonitor(for: workspace.workspaceMonitor, among: monitorInfos)
-                : workspace.workspaceMonitor
+            let focusGeometry = isInFocusMode ? FocusMode.shared.baseGeometry(for: workspace) : nil
+            let monitor = focusGeometry?.monitor ?? workspace.workspaceMonitor
             let rect = monitor.visibleRectPaddedByOuterGaps
-            let baseWidth: CGFloat? = if isInFocusMode {
-                config.singleWindowWidth(
-                    monitorWidth: monitor.width,
-                    availableWidth: rect.width,
-                    height: rect.height - 1,
-                ) ?? rect.width * 0.66
+            let baseWidth: CGFloat? = if let focusGeometry {
+                focusGeometry.frame.width
             } else if isAdaptiveLayoutEnabled && isAdaptiveLoneTilingWindow {
                 rect.width * CGFloat(config.adaptiveLayout.oneColumnWidthPercent) / 100
             } else if !isAdaptiveLayoutEnabled && isLegacyLoneTilingWindow {

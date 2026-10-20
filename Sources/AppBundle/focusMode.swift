@@ -65,22 +65,52 @@ final class FocusMode {
 
     func frame(for window: Window, in workspace: Workspace) -> Rect? {
         guard workspaceName == workspace.name, windowId == window.windowId else { return nil }
-        let monitor = destinationMonitor(for: workspace.workspaceMonitor, among: monitorInfos)
-        let available = monitor.visibleRectPaddedByOuterGaps
-        let baseWidth = config.singleWindowWidth(
-            monitorWidth: monitor.width,
-            availableWidth: available.width,
-            height: available.height - 1,
-        ) ?? available.width * 0.66
-        let width = window.singleWindowWidth(base: baseWidth, available: available.width)
-        let fullHeight = available.height - 1
-        let height = min(fullHeight, max(min(200, fullHeight), fullHeight + window.focusModeHeightAdjustment))
+        let geometry = baseGeometry(for: workspace)
+        let width = window.singleWindowWidth(base: geometry.frame.width, available: geometry.available.width)
+        let fullHeight = geometry.available.height - 1
+        let height = min(
+            fullHeight,
+            max(min(200, fullHeight), geometry.frame.height + window.focusModeHeightAdjustment),
+        )
         return Rect(
-            topLeftX: available.topLeftX + (available.width - width) / 2,
-            topLeftY: available.topLeftY + (fullHeight - height) / 2,
+            topLeftX: geometry.frame.center.x - width / 2,
+            topLeftY: geometry.frame.center.y - height / 2,
             width: width,
             height: height,
         )
+    }
+
+    func baseGeometry(for workspace: Workspace) -> FocusModeBaseGeometry {
+        let monitor = destinationMonitor(for: workspace.workspaceMonitor, among: monitorInfos)
+        let available = monitor.visibleRectPaddedByOuterGaps
+        let fullHeight = available.height - 1
+        let frame: Rect
+        if config.adaptiveLayout.enabled.getValue(for: monitor) {
+            let adaptive = adaptiveWorkspaceRect(
+                available: available,
+                footprint: TilingFootprint(columns: 1, rows: 1),
+                config: config.adaptiveLayout,
+            )
+            frame = Rect(
+                topLeftX: adaptive.topLeftX,
+                topLeftY: adaptive.topLeftY,
+                width: adaptive.width,
+                height: max(0, adaptive.height - 1),
+            )
+        } else {
+            let width = config.singleWindowWidth(
+                monitorWidth: monitor.width,
+                availableWidth: available.width,
+                height: fullHeight,
+            ) ?? available.width * 0.66
+            frame = Rect(
+                topLeftX: available.topLeftX + (available.width - width) / 2,
+                topLeftY: available.topLeftY,
+                width: width,
+                height: fullHeight,
+            )
+        }
+        return FocusModeBaseGeometry(monitor: monitor, available: available, frame: frame)
     }
 
     /// With --stay-on-monitor, keep the source display. Otherwise,
@@ -125,4 +155,10 @@ final class FocusMode {
         else { return }
         window.setAxFrame(originalFloatingFrame.topLeftCorner, originalFloatingFrame.size)
     }
+}
+
+struct FocusModeBaseGeometry {
+    let monitor: MonitorInfo
+    let available: Rect
+    let frame: Rect
 }

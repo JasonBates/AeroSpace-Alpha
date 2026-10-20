@@ -61,7 +61,9 @@ final class FocusModeCommandTest: XCTestCase {
         try await workspace.layoutWorkspace()
         let focusedFrame = try await first.getAxRect(.nonCancellable)
         assertEquals(focusedFrame?.topLeftX, 480)
+        assertEquals(focusedFrame?.topLeftY, 0)
         assertEquals(focusedFrame?.width, 960)
+        assertEquals(focusedFrame?.height, 1079)
         assertTrue(FocusMode.shared.containsFocusedWindow(at: CGPoint(x: 900, y: 500)))
         assertFalse(FocusMode.shared.containsFocusedWindow(at: CGPoint(x: 100, y: 500)))
         assertEquals(root.layout, .tiles)
@@ -75,6 +77,93 @@ final class FocusModeCommandTest: XCTestCase {
         assertEquals(restoredFrame?.topLeftX, initialFrame?.topLeftX)
         assertEquals(restoredFrame?.width, initialFrame?.width)
         assertEquals(root.children.map(\.hWeight), initialWeights)
+    }
+
+    func testAdaptiveToggleKeepsLoneWindowSizeAndCentre() async throws {
+        config.adaptiveLayout.enabled = .constant(true)
+        let workspace = focus.workspace
+        let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
+        assertTrue(window.focusWindow())
+        try await workspace.layoutWorkspace()
+        let before = try await window.getAxRect(.nonCancellable)
+
+        _ = await parseCommand("focus-mode --stay-on-monitor").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        let focused = try await window.getAxRect(.nonCancellable)
+
+        assertEquals(focused, before)
+        assertEquals(focused?.center, before?.center)
+        assertEquals(focused, Rect(topLeftX: 643.2, topLeftY: 54, width: 633.6, height: 971))
+    }
+
+    func testAdaptiveFocusUsesSingleWindowBaselineWithoutChangingMultiwindowWeights() async throws {
+        config.adaptiveLayout.enabled = .constant(true)
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        TestWindow.new(id: 2, parent: root)
+        assertTrue(first.focusWindow())
+        try await workspace.layoutWorkspace()
+        let weights = root.children.map(\.hWeight)
+
+        _ = await parseCommand("focus-mode --stay-on-monitor").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+
+        assertEquals(
+            try await first.getAxRect(.nonCancellable),
+            Rect(topLeftX: 643.2, topLeftY: 54, width: 633.6, height: 971),
+        )
+        assertEquals(root.children.map(\.hWeight), weights)
+    }
+
+    func testAdaptiveFocusResizeOffsetsUseAdaptiveBaseAndSurviveToggle() async throws {
+        config.adaptiveLayout.enabled = .constant(true)
+        let workspace = focus.workspace
+        let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
+        assertTrue(window.focusWindow())
+        try await workspace.layoutWorkspace()
+        let tiledFrame = try await window.getAxRect(.nonCancellable)
+        _ = await parseCommand("focus-mode --stay-on-monitor").cmdOrDie.run(.defaultEnv, .emptyStdin)
+
+        _ = await parseCommand("resize width +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        _ = await parseCommand("resize height -100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(
+            FocusMode.shared.frame(for: window, in: workspace),
+            Rect(topLeftX: 593.2, topLeftY: 104, width: 733.6, height: 871),
+        )
+
+        _ = await parseCommand("resize height 500").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 500)
+        _ = await parseCommand("resize height +99999").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 1079)
+
+        _ = await parseCommand("focus-mode --stay-on-monitor").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertEquals((try await window.getAxRect(.nonCancellable))?.height, tiledFrame?.height)
+        _ = await parseCommand("focus-mode --stay-on-monitor").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.width, 733.6)
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 1079)
+    }
+
+    func testDestinationMonitorControlsAdaptiveFocusGeometry() async {
+        let source = TestFocusMonitor(x: -1920, isMain: false, id: 1, name: "Standard")
+        let destination = TestFocusMonitor(x: 0, isMain: true, id: 2, name: "Adaptive")
+        monitorInfosForTests = [source, destination]
+        config.adaptiveLayout.enabled = .perMonitor(
+            [PerMonitorValue(description: .pattern("Adaptive")!, value: true)],
+            default: false,
+        )
+        let workspace = focus.workspace
+        assertTrue(source.setActiveWorkspace(workspace))
+        let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
+        assertTrue(window.focusWindow())
+
+        _ = await parseCommand("focus-mode").cmdOrDie.run(.defaultEnv, .emptyStdin)
+
+        assertEquals(
+            FocusMode.shared.frame(for: window, in: workspace),
+            Rect(topLeftX: 643.2, topLeftY: 54, width: 633.6, height: 971),
+        )
     }
 
     func testFollowsFocusAndStopsOnWorkspaceSwitch() async {
@@ -183,8 +272,9 @@ final class FocusModeCommandTest: XCTestCase {
 private struct TestFocusMonitor: MonitorInfo {
     let x: CGFloat
     let isMain: Bool
-    var monitorAppKitNsScreenScreensId: Int { 1 }
-    var name: String { "Focus Mode test display" }
+    var id: Int = 1
+    var name: String = "Focus Mode test display"
+    var monitorAppKitNsScreenScreensId: Int { id }
     var rect: Rect { Rect(topLeftX: x, topLeftY: 0, width: 1920, height: 1080) }
     var visibleRect: Rect { rect }
     var width: CGFloat { rect.width }

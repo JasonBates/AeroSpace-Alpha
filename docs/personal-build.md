@@ -5,7 +5,7 @@ AeroSpace build for a Mac Studio and a laptop. The README gives the overview;
 this page records how each piece works and why. It can constrain the whole
 tiling workspace according to its structural rows and columns on selected
 monitors, while retaining the earlier centred width rule for a lone window on
-other monitors and in Focus Mode.
+other monitors and in Focus Mode on those monitors.
 
 ![Illustration of a lone tiled window centred at 50% width on a standard 16:9 monitor](assets/single-window-width.svg)
 
@@ -63,15 +63,17 @@ Adaptive bounds are a layout target, not a hard per-window maximum. An app's
 minimum size or refusal to accept an Accessibility frame can make its actual
 window exceed the target, and nested leaves receive only their portion of the
 workspace rectangle. AeroSpace full screen and Focus Mode remain explicit leaf
-overrides. The underlying adaptive workspace geometry and weights stay intact,
-so leaving either returns to the adaptive arrangement.
+overrides. On a monitor where adaptive layout is enabled, Focus Mode uses the
+same centred one-column width and single-row height as a lone adaptive window.
+The underlying adaptive workspace geometry and weights stay intact, so leaving
+either returns to the adaptive arrangement.
 
-For normal tiling on an enabled monitor, adaptive layout takes precedence over
-`single-window-width-rules`. A lone window's `resize smart` and `resize width`
-commands use the adaptive one-column width as their base. Focus Mode keeps its
-existing width rule, or 66% fallback, and uses the same per-window width
-adjustment; resizing in Focus Mode therefore carries into a later lone adaptive
-layout for that window.
+For normal tiling and Focus Mode on an enabled monitor, adaptive layout takes
+precedence over `single-window-width-rules`. A lone window's `resize smart` and
+`resize width` commands use the adaptive one-column width as their base. Focus
+Mode uses the same per-window width adjustment, so resizing there carries into
+a later lone adaptive layout for that window. On other monitors, Focus Mode
+keeps its existing width rule or 66% fallback.
 
 ## Single-window width
 
@@ -99,8 +101,8 @@ sizing of an accordion (a stack of overlapping windows) is disabled here, so
 multiple tiled windows use the normal layout. AeroSpace full screen still
 fills the display. The width rules can be edited for other monitors and setups.
 On a monitor with adaptive layout enabled, its one-column percentage replaces
-this rule for normal tiling. The rule still applies on other monitors and in
-Focus Mode.
+this rule for normal tiling and Focus Mode. The rule still applies on other
+monitors.
 
 While a tiled window is alone, my `resize smart +100` and
 `resize smart -100` bindings widen or narrow it by 100 display points and keep
@@ -114,8 +116,10 @@ shows the additional implementation and tests.
 ## Focus Mode experiment
 
 Focus Mode is a reversible centred view for the focused window.
-It uses the same width rules as a lone window, or 66% of the usable display
-width when no rule is configured. A translucent dark layer dims the other
+On an adaptive display it uses the lone-window width and single-row height,
+including the vertical margins. On other displays it uses the lone-window
+width rule, or 66% of the usable display width when no rule is configured.
+Width and height resize commands adjust this centred frame. A translucent dark layer dims the other
 windows on every display. The layer does not take keyboard or mouse input.
 On a multi-display setup the focused window appears on the middle display
 (or the macOS main display when there are two). It returns to its original

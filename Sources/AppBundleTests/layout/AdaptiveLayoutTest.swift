@@ -491,7 +491,7 @@ final class AdaptiveLayoutTest: XCTestCase {
         _ = await parseCommand("focus-mode --stay-on-monitor").cmdOrDie.run(.defaultEnv, .emptyStdin)
         try await workspace.layoutWorkspace()
         assertRect(workspace.lastAppliedLayoutVirtualRect, x: 0, y: 54, width: 1920, height: 972)
-        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 0, width: 1267.2, height: 1079)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 643.2, y: 54, width: 633.6, height: 971)
 
         _ = await parseCommand("focus-mode").cmdOrDie.run(.defaultEnv, .emptyStdin)
         first.isFullscreen = true
@@ -504,7 +504,7 @@ final class AdaptiveLayoutTest: XCTestCase {
         assertRect(try await first.getAxRect(.nonCancellable), x: 0, y: 54, width: 640, height: 971)
     }
 
-    func testFocusModeResizeUsesLegacyFallbackThenCarriesAdjustmentToAdaptiveLayout() async throws {
+    func testFocusModeResizeUsesAdaptiveBaseAndCarriesAdjustmentToLoneLayout() async throws {
         let workspace = focus.workspace
         let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         assertTrue(window.focusWindow())
@@ -513,7 +513,7 @@ final class AdaptiveLayoutTest: XCTestCase {
         let result = await parseCommand("resize width +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
         assertEquals(result.exitCode.rawValue, 0)
         try await workspace.layoutWorkspace()
-        assertRect(try await window.getAxRect(.nonCancellable), x: 276.4, y: 0, width: 1367.2, height: 1079)
+        assertRect(try await window.getAxRect(.nonCancellable), x: 593.2, y: 54, width: 733.6, height: 971)
 
         _ = await parseCommand("focus-mode").cmdOrDie.run(.defaultEnv, .emptyStdin)
         try await workspace.layoutWorkspace()
