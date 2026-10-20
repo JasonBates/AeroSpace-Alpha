@@ -21,6 +21,30 @@ final class FocusModeCommandTest: XCTestCase {
         assertEquals(mode.destinationMonitor(for: left, among: [left]).rect.minX, -1920)
     }
 
+    func testStayOnMonitorOverridesStageAndResetsAfterToggle() async {
+        let source = TestFocusMonitor(x: -1920, isMain: false)
+        let centre = TestFocusMonitor(x: 0, isMain: true)
+        let right = TestFocusMonitor(x: 1920, isMain: false)
+        let window = TestWindow.new(id: 1, parent: focus.workspace.rootTilingContainer)
+        assertTrue(window.focusWindow())
+
+        let result = await parseCommand("focus-mode --stay-on-monitor").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(result.exitCode.rawValue, 0)
+        let mode = FocusMode.shared
+        assertEquals(mode.destinationMonitor(for: source, among: [source, centre]).rect.minX, -1920)
+        assertEquals(mode.destinationMonitor(for: right, among: [source, centre, right]).rect.minX, 1920)
+        let second = TestWindow.new(id: 2, parent: focus.workspace.rootTilingContainer)
+        assertTrue(second.focusWindow())
+        await mode.syncWithFocus()
+        assertEquals(mode.windowId, 2)
+        assertEquals(mode.destinationMonitor(for: source, among: [source, centre]).rect.minX, -1920)
+
+        _ = await parseCommand("focus-mode --stay-on-monitor").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertFalse(mode.isActive)
+        _ = await parseCommand("focus-mode").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(mode.destinationMonitor(for: source, among: [source, centre]).rect.minX, 0)
+    }
+
     func testToggleCentresFocusedWindowAndRestoresTiles() async throws {
         config.singleWindowWidthRules = [SingleWindowWidthRule(minMonitorWidth: 0, widthPercent: 50)]
         let workspace = focus.workspace

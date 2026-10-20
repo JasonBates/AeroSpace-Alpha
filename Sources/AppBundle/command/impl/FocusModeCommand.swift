@@ -15,7 +15,7 @@ struct FocusModeCommand: Command {
         else {
             return .fail(io.err("Focus Mode needs a focused tiled or floating window"))
         }
-        guard await FocusMode.shared.start(window: window, workspace: focus.workspace) else {
+        guard await FocusMode.shared.start(window: window, workspace: focus.workspace, stayOnMonitor: args.stayOnMonitor) else {
             return .fail(io.err("Could not read the floating window's frame"))
         }
         return .succ

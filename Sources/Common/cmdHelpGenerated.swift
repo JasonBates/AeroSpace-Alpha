@@ -46,7 +46,7 @@ let focus_back_and_forth_help_generated = """
     USAGE: focus-back-and-forth [-h|--help]
     """
 let focus_mode_help_generated = """
-    USAGE: focus-mode [-h|--help]
+    USAGE: focus-mode [-h|--help] [--stay-on-monitor]
     """
 let focus_monitor_help_generated = """
     USAGE: focus-monitor [-h|--help] [--wrap-around] (left|down|up|right)

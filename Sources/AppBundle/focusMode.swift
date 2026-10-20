@@ -7,11 +7,12 @@ final class FocusMode {
 
     private(set) var workspaceName: String?
     private(set) var windowId: UInt32?
+    private var stayOnMonitor = false
     private var originalFloatingFrame: Rect?
 
     var isActive: Bool { workspaceName != nil }
 
-    func start(window: Window, workspace: Workspace) async -> Bool {
+    func start(window: Window, workspace: Workspace, stayOnMonitor: Bool = false) async -> Bool {
         let floatingFrame: Rect?
         if window.isFloating {
             guard let frame = try? await window.getAxRect(.nonCancellable) else { return false }
@@ -19,6 +20,7 @@ final class FocusMode {
         } else {
             floatingFrame = nil
         }
+        self.stayOnMonitor = stayOnMonitor
         workspaceName = workspace.name
         windowId = window.windowId
         originalFloatingFrame = floatingFrame
@@ -30,6 +32,7 @@ final class FocusMode {
         workspaceName = nil
         windowId = nil
         originalFloatingFrame = nil
+        stayOnMonitor = false
         FocusDimmer.shared.hide()
     }
 
@@ -78,10 +81,11 @@ final class FocusMode {
         )
     }
 
-    /// The middle display is the Focus Mode stage. With two displays, use the
+    /// With --stay-on-monitor, keep the source display. Otherwise,
+    /// the middle display is the Focus Mode stage. With two displays, use the
     /// macOS main display; with one, keep the window where it already is.
     func destinationMonitor(for source: MonitorInfo, among available: [MonitorInfo]) -> MonitorInfo {
-        guard available.count > 1 else { return source }
+        guard !stayOnMonitor, available.count > 1 else { return source }
         if available.count == 2 {
             return available.first(where: \.isMain) ?? source
         }

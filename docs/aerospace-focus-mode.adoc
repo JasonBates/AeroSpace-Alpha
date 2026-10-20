@@ -8,7 +8,7 @@ include::util/man-attributes.adoc[]
 == Synopsis
 [verse]
 // tag::synopsis[]
-aerospace focus-mode [-h|--help]
+aerospace focus-mode [-h|--help] [--stay-on-monitor]
 // end::synopsis[]
 
 == Description
@@ -23,6 +23,11 @@ view. With three or more displays, the focused window moves to the middle
 display; with two, it moves to the macOS main display. With one display, it
 stays there. The window returns to its original tiled position when Focus Mode
 ends. The window tree and tile sizes are not changed.
+
+Pass `--stay-on-monitor` to keep the window on its workspace's monitor instead.
+For example, use `ctrl-alt-cmd-z = 'focus-mode --stay-on-monitor'` on a laptop
+while keeping the default binding on a desktop. This choice lasts until Focus
+Mode ends, including when selecting another window in the same workspace.
 
 Keyboard focus commands can select another window in the same workspace while
 Focus Mode stays active. Clicking outside the focused window, switching

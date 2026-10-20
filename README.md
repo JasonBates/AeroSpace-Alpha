@@ -92,6 +92,9 @@ ctrl-alt-cmd-equal = 'resize smart +100'
 ctrl-alt-cmd-z = 'focus-mode'
 ```
 
+On a laptop, use `focus-mode --stay-on-monitor` to centre the window on its
+workspace's own display, including when external monitors are connected.
+
 ### Floating windows that behave
 
 - **`center`** centres a floating window on its monitor, shrinking it first if it is larger than the screen.
