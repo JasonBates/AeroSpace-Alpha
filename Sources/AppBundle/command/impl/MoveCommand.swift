@@ -86,6 +86,15 @@ struct MoveCommand: Command {
             }
 
             if let targetMonitor = monitors.getOrNil(atIndex: index) {
+                if args.tileBeforeMonitor,
+                   workspace.rootTilingContainer.orientation != direction.orientation,
+                   workspace.rootTilingContainer.allLeafWindowsRecursive.lazy
+                   .filter({ !$0.isAwaitingOnWindowDetected })
+                   .prefix(2).count == 2
+                {
+                    createImplicitContainerAndMoveWindow(window, workspace, direction)
+                    return .succ
+                }
                 return moveWindowToMonitor(
                     window,
                     targetMonitor,

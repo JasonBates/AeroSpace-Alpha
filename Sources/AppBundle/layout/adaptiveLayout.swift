@@ -44,6 +44,7 @@ func adaptiveWorkspaceRect(
     config: AdaptiveLayoutConfig,
 ) -> Rect {
     let widthPercent = switch footprint.columns {
+        case 1 where footprint.rows >= 4: config.twoColumnWidthPercent
         case 1: config.oneColumnWidthPercent
         case 2: config.twoColumnWidthPercent
         default: 100

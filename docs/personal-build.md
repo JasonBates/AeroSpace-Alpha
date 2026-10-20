@@ -35,8 +35,10 @@ single-row-height-percent = 90
 The last boolean is the fallback for monitors that do not match. Each
 percentage must be from 1 to 100, and the one-column width cannot exceed the
 two-column width. When enabled, one structural column occupies 33% of the
-usable monitor width, two occupy 66%, and three or more occupy all of it. One
-structural row occupies 90% of the usable height; two or more occupy all of it.
+usable monitor width, two occupy 66%, and three or more occupy all of it. A
+one-column stack of four or more rows uses the two-column width and stays capped
+at that width as more rows are added. One structural row occupies 90% of the
+usable height; two or more occupy all of it.
 The result is centred horizontally and vertically. The usable rectangle already
 has outer gaps removed, and layout applies the configured inner gaps inside it.
 
@@ -203,7 +205,7 @@ unchanged except where noted.
 
 ## Further additions
 
-Alpha also carries three additions
+Alpha also carries four additions
 and fixes for hidden windows and disappearing monitors,
 each covered by unit tests and checked live on a three-monitor Mac.
 
@@ -217,6 +219,9 @@ each covered by unit tests and checked live on a three-monitor Mac.
   workspace bar can follow windows without polling `list-windows`.
   `window-moved` also reports moves made by `on-window-detected` callbacks, and
   minimizing (no `workspace`) or restoring (no `prevWorkspace`) a window.
+- `move --boundaries all-monitors-outer-frame --tile-before-monitor` first
+  tiles a multi-window workspace along the requested axis when needed, then
+  crosses to the neighboring monitor when the move is repeated.
 
 It also changes where hidden windows are parked. AeroSpace hides the windows of
 invisible workspaces in a bottom corner of their monitor. When both bottom

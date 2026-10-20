@@ -54,6 +54,50 @@ final class AdaptiveLayoutTest: XCTestCase {
         assertRect(try await second.getAxRect(.nonCancellable), x: 643.2, y: 539.5, width: 633.6, height: 539.5)
     }
 
+    func testSingleColumnUsesTwoColumnWidthFromFourthStructuralRow() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        root.changeOrientation(.v)
+
+        for row in 1 ... 8 {
+            TestWindow.new(id: UInt32(row), parent: root, adaptiveWeight: row == 1 ? 1 : WEIGHT_AUTO)
+            try await workspace.layoutWorkspace()
+            if [3, 4, 5, 8].contains(row) {
+                assertEquals(root.tilingFootprint, TilingFootprint(columns: 1, rows: row))
+                let expectedX: CGFloat = row < 4 ? 643.2 : 326.4
+                let expectedWidth: CGFloat = row < 4 ? 633.6 : 1267.2
+                assertRect(workspace.lastAppliedLayoutVirtualRect, x: expectedX, y: 0, width: expectedWidth, height: 1080)
+            }
+        }
+    }
+
+    func testTallFootprintsWithMultipleColumnsKeepTheirNormalWidthRules() {
+        let available = Rect(topLeftX: 0, topLeftY: 0, width: 1920, height: 1080)
+
+        assertRect(
+            adaptiveWorkspaceRect(
+                available: available,
+                footprint: TilingFootprint(columns: 2, rows: 8),
+                config: config.adaptiveLayout,
+            ),
+            x: 326.4,
+            y: 0,
+            width: 1267.2,
+            height: 1080,
+        )
+        assertRect(
+            adaptiveWorkspaceRect(
+                available: available,
+                footprint: TilingFootprint(columns: 3, rows: 8),
+                config: config.adaptiveLayout,
+            ),
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        )
+    }
+
     func testTwoAboveSpanningBottomUsesTwoByTwoBounds() async throws {
         let workspace = focus.workspace
         let root = workspace.rootTilingContainer
@@ -143,7 +187,7 @@ final class AdaptiveLayoutTest: XCTestCase {
         let root = workspace.rootTilingContainer
         root.layout = .accordion
         let first = TestWindow.new(id: 1, parent: root)
-        let second = TestWindow.new(id: 2, parent: root)
+        let windows = (2 ... 8).map { TestWindow.new(id: UInt32($0), parent: root) }
 
         assertTrue(first.focusWindow())
         try await workspace.layoutWorkspace()
@@ -151,8 +195,9 @@ final class AdaptiveLayoutTest: XCTestCase {
         assertEquals(root.tilingFootprint, TilingFootprint(columns: 1, rows: 1))
         assertRect(firstBounds, x: 643.2, y: 54, width: 633.6, height: 972)
 
-        assertTrue(second.focusWindow())
+        assertTrue(windows.last.orDie().focusWindow())
         try await workspace.layoutWorkspace()
+        assertEquals(root.tilingFootprint, TilingFootprint(columns: 1, rows: 1))
         assertEquals(workspace.lastAppliedLayoutVirtualRect, firstBounds)
     }
 

@@ -10,10 +10,200 @@ final class MoveCommandTest: XCTestCase {
         assertNil(parseCommand("move --fail-if-fullscreen left").errorOrNil)
         assertNil(parseCommand("move --fail-if-macos-native-fullscreen --window-id 1 right").errorOrNil)
         assertNil(parseCommand("move --boundaries all-monitors-outer-frame --boundaries-action wrap-around-all-monitors right").errorOrNil)
+        assertNil(parseCommand("move --boundaries all-monitors-outer-frame --tile-before-monitor right").errorOrNil)
+        assertEquals(
+            parseCommand("move --tile-before-monitor right").errorOrNil,
+            "--tile-before-monitor requires --boundaries all-monitors-outer-frame",
+        )
         assertEquals(
             parseCommand("move --boundaries-action wrap-around-all-monitors right").errorOrNil,
             "workspace and wrap-around-all-monitors is an invalid combination of values",
         )
+    }
+
+    func testTileBeforeMonitor_rearrangesThenTransfersInAllDirections() async {
+        let cases: [(CardinalDirection, Rect, Rect)] = [
+            (.left, Rect(topLeftX: 1920, topLeftY: 0, width: 1920, height: 1080), Rect(topLeftX: 0, topLeftY: 0, width: 1920, height: 1080)),
+            (.right, Rect(topLeftX: 0, topLeftY: 0, width: 1920, height: 1080), Rect(topLeftX: 1920, topLeftY: 0, width: 1920, height: 1080)),
+            (.up, Rect(topLeftX: 0, topLeftY: 1080, width: 1920, height: 1080), Rect(topLeftX: 0, topLeftY: 0, width: 1920, height: 1080)),
+            (.down, Rect(topLeftX: 0, topLeftY: 0, width: 1920, height: 1080), Rect(topLeftX: 0, topLeftY: 1080, width: 1920, height: 1080)),
+        ]
+
+        for (direction, sourceRect, targetRect) in cases {
+            setUpWorkspacesForTests()
+            let monitors = useTestMonitors([sourceRect, targetRect])
+            let source = Workspace.get(byName: "source-\(direction.rawValue)")
+            let target = Workspace.get(byName: "target-\(direction.rawValue)")
+            assertTrue(monitors[0].setActiveWorkspace(source))
+            assertTrue(monitors[1].setActiveWorkspace(target))
+            let originalRoot = source.rootTilingContainer
+            originalRoot.changeOrientation(direction.orientation.opposite)
+            TestWindow.new(id: 1, parent: originalRoot)
+            TestWindow.new(id: 2, parent: originalRoot)
+            let moved = TestWindow.new(id: 3, parent: originalRoot)
+            assertTrue(moved.focusWindow())
+            let command = "move --boundaries all-monitors-outer-frame --tile-before-monitor \(direction.rawValue)"
+
+            let tileResult = await parseCommand(command).cmdOrDie.run(.defaultEnv, .emptyStdin)
+
+            let newRoot = source.rootTilingContainer
+            assertEquals(tileResult.exitCode.rawValue, 0)
+            assertEquals(newRoot.orientation, direction.orientation)
+            XCTAssertTrue(newRoot.children.contains { $0 === originalRoot })
+            XCTAssertTrue(moved.parent === newRoot)
+            assertEquals(moved.ownIndex, direction.isPositive ? 1 : 0)
+            assertEquals(moved.nodeWorkspace, source)
+            assertEquals(focus.windowOrNil, moved)
+
+            let transferResult = await parseCommand(command).cmdOrDie.run(.defaultEnv, .emptyStdin)
+
+            assertEquals(transferResult.exitCode.rawValue, 0)
+            assertEquals(moved.nodeWorkspace, target)
+            assertEquals(focus.windowOrNil, moved)
+            assertEquals(focus.workspace, target)
+        }
+    }
+
+    func testTileBeforeMonitor_crossesImmediatelyWhenAloneOrAlreadyOnRootAxis() async {
+        for shouldBeAlone in [true, false] {
+            setUpWorkspacesForTests()
+            let (leftMonitor, rightMonitor) = useTwoTestMonitors()
+            let source = Workspace.get(byName: "source-\(shouldBeAlone)")
+            let target = Workspace.get(byName: "target-\(shouldBeAlone)")
+            assertTrue(leftMonitor.setActiveWorkspace(source))
+            assertTrue(rightMonitor.setActiveWorkspace(target))
+            let root = source.rootTilingContainer
+            root.changeOrientation(shouldBeAlone ? .v : .h)
+            if !shouldBeAlone {
+                TestWindow.new(id: 1, parent: root)
+            }
+            let moved = TestWindow.new(id: 2, parent: root)
+            assertTrue(moved.focusWindow())
+
+            let result = await parseCommand(
+                "move --boundaries all-monitors-outer-frame --tile-before-monitor right",
+            ).cmdOrDie.run(.defaultEnv, .emptyStdin)
+
+            assertEquals(result.exitCode.rawValue, 0)
+            XCTAssertTrue(source.rootTilingContainer === root)
+            assertEquals(moved.nodeWorkspace, target)
+        }
+    }
+
+    func testTileBeforeMonitor_ignoresPendingAndEmptyBranchesWhenDecidingToTile() async {
+        let monitors = useTestMonitors([
+            Rect(topLeftX: 0, topLeftY: 0, width: 1920, height: 1080),
+            Rect(topLeftX: 0, topLeftY: 1080, width: 1920, height: 1080),
+        ])
+        let source = Workspace.get(byName: "source")
+        let target = Workspace.get(byName: "target")
+        assertTrue(monitors[0].setActiveWorkspace(source))
+        assertTrue(monitors[1].setActiveWorkspace(target))
+        let root = source.rootTilingContainer
+        let active = TestWindow.new(id: 1, parent: root)
+        let pendingContainer = TilingContainer.newVTiles(parent: root, adaptiveWeight: WEIGHT_AUTO)
+        let pending = TestWindow.new(id: 2, parent: pendingContainer)
+        pending.isAwaitingOnWindowDetected = true
+        _ = TilingContainer.newVTiles(parent: root, adaptiveWeight: WEIGHT_AUTO)
+        assertTrue(active.focusWindow())
+
+        let result = await parseCommand(
+            "move --boundaries all-monitors-outer-frame --tile-before-monitor down",
+        ).cmdOrDie.run(.defaultEnv, .emptyStdin)
+
+        assertEquals(result.exitCode.rawValue, 0)
+        XCTAssertTrue(source.rootTilingContainer === root)
+        assertEquals(active.nodeWorkspace, target)
+    }
+
+    func testTileBeforeMonitor_nestedLayoutNormalizesAfterSecondMove() async {
+        config.enableNormalizationFlattenContainers = true
+        let monitors = useTestMonitors([
+            Rect(topLeftX: 0, topLeftY: 0, width: 1920, height: 1080),
+            Rect(topLeftX: 0, topLeftY: 1080, width: 1920, height: 1080),
+        ])
+        let source = Workspace.get(byName: "source")
+        let target = Workspace.get(byName: "target")
+        assertTrue(monitors[0].setActiveWorkspace(source))
+        assertTrue(monitors[1].setActiveWorkspace(target))
+        let root = source.rootTilingContainer
+        var moved: Window!
+        TilingContainer.newVTiles(parent: root, adaptiveWeight: 1).apply {
+            TestWindow.new(id: 1, parent: $0)
+            moved = TestWindow.new(id: 2, parent: $0)
+        }
+        TestWindow.new(id: 3, parent: root)
+        assertTrue(moved.focusWindow())
+        let command = "move --boundaries all-monitors-outer-frame --tile-before-monitor down"
+
+        assertEquals((await parseCommand(command).cmdOrDie.run(.defaultEnv, .emptyStdin)).exitCode.rawValue, 0)
+        assertEquals(source.rootTilingContainer.layoutDescription, .v_tiles([.h_tiles([.window(1), .window(3)]), .window(2)]))
+        assertEquals((await parseCommand(command).cmdOrDie.run(.defaultEnv, .emptyStdin)).exitCode.rawValue, 0)
+        source.normalizeContainers()
+
+        assertEquals(source.rootTilingContainer.layoutDescription, .h_tiles([.window(1), .window(3)]))
+        assertEquals(moved.nodeWorkspace, target)
+        assertEquals(focus.windowOrNil, moved)
+    }
+
+    func testTileBeforeMonitor_doesNotChangeNoNeighborBoundaryActions() async {
+        let cases: [(String, Int32, LayoutDescription)] = [
+            ("stop", 0, .h_tiles([.window(1), .window(2)])),
+            ("fail", 2, .h_tiles([.window(1), .window(2)])),
+            ("create-implicit-container", 0, .v_tiles([.h_tiles([.window(1)]), .window(2)])),
+            ("wrap-around-all-monitors", 0, .v_tiles([.window(2), .h_tiles([.window(1)])])),
+        ]
+        for (action, expectedExitCode, expectedLayout) in cases {
+            setUpWorkspacesForTests()
+            let workspace = focus.workspace
+            workspace.rootTilingContainer.apply {
+                TestWindow.new(id: 1, parent: $0)
+                assertTrue(TestWindow.new(id: 2, parent: $0).focusWindow())
+            }
+
+            let result = await parseCommand(
+                "move --boundaries all-monitors-outer-frame --boundaries-action \(action) --tile-before-monitor down",
+            ).cmdOrDie.run(.defaultEnv, .emptyStdin)
+
+            assertEquals(result.exitCode.rawValue, expectedExitCode)
+            assertEquals(workspace.rootTilingContainer.layoutDescription, expectedLayout)
+        }
+    }
+
+    func testTileBeforeMonitor_preservesAdaptiveGeometryAndResizeBeforeTransfer() async throws {
+        config.adaptiveLayout.enabled = .constant(true)
+        let monitors = useTestMonitors([
+            Rect(topLeftX: 0, topLeftY: 0, width: 1920, height: 1080),
+            Rect(topLeftX: 0, topLeftY: 1080, width: 1920, height: 1080),
+        ])
+        let source = Workspace.get(byName: "source")
+        let target = Workspace.get(byName: "target")
+        assertTrue(monitors[0].setActiveWorkspace(source))
+        assertTrue(monitors[1].setActiveWorkspace(target))
+        let root = source.rootTilingContainer.apply {
+            TestWindow.new(id: 1, parent: $0)
+            TestWindow.new(id: 2, parent: $0)
+        }
+        let moved = TestWindow.new(id: 3, parent: root)
+        assertTrue(moved.focusWindow())
+        let command = "move --boundaries all-monitors-outer-frame --tile-before-monitor down"
+
+        assertEquals((await parseCommand(command).cmdOrDie.run(.defaultEnv, .emptyStdin)).exitCode.rawValue, 0)
+        try await source.layoutWorkspace()
+        assertEquals(source.rootTilingContainer.tilingFootprint, TilingFootprint(columns: 2, rows: 2))
+        assertMoveRect(source.lastAppliedLayoutVirtualRect, x: 326.4, y: 0, width: 1267.2, height: 1080)
+        let initialHeight = try await moved.getAxRect(.nonCancellable).orDie().height
+
+        assertEquals((await parseCommand("resize height +100").cmdOrDie.run(.defaultEnv, .emptyStdin)).exitCode.rawValue, 0)
+        try await source.layoutWorkspace()
+        let resizedHeight = try await moved.getAxRect(.nonCancellable).orDie().height
+        XCTAssertEqual(resizedHeight, initialHeight + 100, accuracy: 0.001)
+
+        assertEquals((await parseCommand(command).cmdOrDie.run(.defaultEnv, .emptyStdin)).exitCode.rawValue, 0)
+        try await source.layoutWorkspace()
+        try await target.layoutWorkspace()
+        assertMoveRect(source.lastAppliedLayoutVirtualRect, x: 326.4, y: 54, width: 1267.2, height: 972)
+        assertMoveRect(target.lastAppliedLayoutVirtualRect, x: 643.2, y: 1134, width: 633.6, height: 972)
     }
 
     func testWrapAroundAllMonitors_onSingleMonitor() async {
@@ -546,6 +736,25 @@ private func useTestMonitors(_ rects: [Rect]) -> [MonitorInfo] {
     }
     monitorInfosForTests = monitors
     return monitors
+}
+
+private func assertMoveRect(
+    _ actual: Rect?,
+    x: CGFloat,
+    y: CGFloat,
+    width: CGFloat,
+    height: CGFloat,
+    file: StaticString = #filePath,
+    line: UInt = #line,
+) {
+    guard let actual else {
+        XCTFail("Expected a rect", file: file, line: line)
+        return
+    }
+    XCTAssertEqual(actual.topLeftX, x, accuracy: 0.001, file: file, line: line)
+    XCTAssertEqual(actual.topLeftY, y, accuracy: 0.001, file: file, line: line)
+    XCTAssertEqual(actual.width, width, accuracy: 0.001, file: file, line: line)
+    XCTAssertEqual(actual.height, height, accuracy: 0.001, file: file, line: line)
 }
 
 extension TreeNode {

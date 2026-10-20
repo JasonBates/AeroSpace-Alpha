@@ -37,7 +37,7 @@ In short, compared with stock AeroSpace:
 
 - **Multi-monitor focus and movement work.** Focus lands on the window you asked for, hidden windows stay hidden and stop costing GPU time, a workspace on one monitor no longer flips because of an app on another, and displays can reconfigure without a crash.
 - **Floating windows behave.** They can be resized, centred, nudged from the keyboard and placed by rule, and dragged across monitors without jumping back.
-- **Workspace bounds adapt to the tiling structure.** On selected monitors, one or two structural columns keep centred side margins, three or more use the full usable width, and a single structural row keeps centred top and bottom margins.
+- **Workspace bounds adapt to the tiling structure.** On selected monitors, one structural column keeps narrow centred side margins, two columns or a stack of at least four rows use wider centred margins, three or more columns use the full usable width, and a single structural row keeps centred top and bottom margins.
 - **A lone window gets a sensible width**, resizable from the keyboard, and Focus Mode centres and dims on demand.
 - **A native focused-window border**, if you want one, with no extra daemon.
 - **Workspace bars get events** instead of polling.
@@ -49,8 +49,9 @@ In short, compared with stock AeroSpace:
 
 Adaptive layout is an opt-in, per-monitor policy for the whole tiled workspace.
 One structural column uses 33% of the usable monitor width, two use 66%, and
-three or more use the full width. One structural row uses 90% of the usable
-height; two or more use the full height. The rectangle is centred on both axes.
+three or more use the full width. A one-column stack of four or more rows also
+uses the two-column width, capped there as the stack grows. One structural row
+uses 90% of the usable height; two or more use the full height. The rectangle is centred on both axes.
 "Usable" means the monitor rectangle after the configured outer gaps, and the
 usual inner gaps still separate tiles.
 
@@ -100,6 +101,7 @@ With "Displays have separate Spaces" on and an app open on two monitors, stock A
 - A cancelled focus request cannot steal focus from a newer one ([#2299](https://github.com/nikitabobko/AeroSpace/pull/2299)).
 - Switching workspaces on one monitor no longer silently changes the workspace on another when an app has windows on both ([#2280](https://github.com/nikitabobko/AeroSpace/pull/2280)).
 - `move --boundaries all-monitors-outer-frame --boundaries-action wrap-around-all-monitors` carries a window from the outer edge of the monitor row round to the opposite monitor ([#2319](https://github.com/nikitabobko/AeroSpace/pull/2319)).
+- `move --boundaries all-monitors-outer-frame --tile-before-monitor` gives a multi-window workspace one move to tile along the requested axis before the next move crosses to a neighboring monitor.
 
 Tested daily on three side-by-side monitors and a laptop.
 

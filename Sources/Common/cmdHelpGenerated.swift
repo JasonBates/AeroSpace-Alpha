@@ -139,6 +139,7 @@ let move_help_generated = """
     USAGE: move [-h|--help] [--window-id <window-id>] [--boundaries <boundary>]
                 [--boundaries-action <boundary-action>] [--fail-if-fullscreen]
                 [--fail-if-macos-native-fullscreen] [--floating-pixels <pixels>]
+                [--tile-before-monitor]
                 (left|down|up|right)
     """
 let reload_config_help_generated = """

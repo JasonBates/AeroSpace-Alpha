@@ -12,6 +12,7 @@ include::util/man-attributes.adoc[]
 aerospace move [-h|--help] [--window-id <window-id>] [--boundaries <boundary>]
                [--boundaries-action <boundary-action>] [--fail-if-fullscreen]
                [--fail-if-macos-native-fullscreen] [--floating-pixels <pixels>]
+               [--tile-before-monitor]
                (left|down|up|right)
 
 // end::synopsis[]
@@ -50,6 +51,12 @@ The default is: `create-implicit-container`
 It moves the window to the active workspace on the monitor at the opposite
 outer edge, preserving focus when the moved window was focused. With a single
 monitor, it moves the window to the opposite edge of the current workspace.
+
+--tile-before-monitor::
+With `--boundaries all-monitors-outer-frame`, first turn a multi-window workspace
+into tiles along the requested axis when its root uses the other axis. Repeating
+the move then transfers the window to the neighboring monitor. A lone window,
+or a window already at the root edge along that axis, transfers immediately.
 
 --fail-if-fullscreen::
 Exit with non-zero code if the target window is fullscreen by the `fullscreen` command.
@@ -149,6 +156,9 @@ v_tiles
 the implicit container isn't created.
 +
 Instead, `window 2` would be moved to the monitor above the current.
++
+Adding `--tile-before-monitor` creates the implicit container on the first move
+and moves `window 2` to the monitor above on the second move.
 
 . With `--boundaries all-monitors-outer-frame --boundaries-action wrap-around-all-monitors`,
 a move beyond the outer edge of the monitor set moves the window to the active

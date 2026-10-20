@@ -9,6 +9,7 @@ public struct MoveCmdArgs: CmdArgs {
             "--floating-pixels": singleValueSubArgParser(\.floatingPixels, "<pixels>", parseUInt32),
             "--boundaries": ArgParser(\.rawBoundaries, upcastArgParserFun(parseBoundaries)),
             "--boundaries-action": ArgParser(\.rawBoundariesAction, upcastArgParserFun(parseBoundariesAction)),
+            "--tile-before-monitor": trueBoolFlag(\.tileBeforeMonitor),
             "--fail-if-fullscreen": trueBoolFlag(\.failIfFullscreen),
             "--fail-if-macos-native-fullscreen": trueBoolFlag(\.failIfMacosNativeFullscreen),
         ],
@@ -19,6 +20,7 @@ public struct MoveCmdArgs: CmdArgs {
     public var floatingPixels: UInt32? = nil
     public var rawBoundaries: Boundaries? = nil
     public var rawBoundariesAction: WhenBoundariesCrossed? = nil
+    public var tileBeforeMonitor: Bool = false
     public var failIfFullscreen: Bool = false
     public var failIfMacosNativeFullscreen: Bool = false
 
@@ -43,9 +45,13 @@ extension MoveCmdArgs {
 func parseMoveCmdArgs(_ args: StrArrSlice) -> ParsedCmd<MoveCmdArgs> {
     parseSpecificCmdArgs(MoveCmdArgs(rawArgs: args), args)
         .flatMap { (raw: MoveCmdArgs) -> ParsedCmd<MoveCmdArgs> in
-            raw.boundaries == .workspace && raw.boundariesAction == .wrapAroundAllMonitors
-                ? .failure("\(raw.boundaries.rawValue) and \(raw.boundariesAction.rawValue) is an invalid combination of values")
-                : .cmd(raw)
+            if raw.tileBeforeMonitor && raw.boundaries != .allMonitorsOuterFrame {
+                return .failure("--tile-before-monitor requires --boundaries all-monitors-outer-frame")
+            }
+            if raw.boundaries == .workspace && raw.boundariesAction == .wrapAroundAllMonitors {
+                return .failure("\(raw.boundaries.rawValue) and \(raw.boundariesAction.rawValue) is an invalid combination of values")
+            }
+            return .cmd(raw)
         }
 }
 
