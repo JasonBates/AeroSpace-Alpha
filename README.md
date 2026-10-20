@@ -220,7 +220,18 @@ Each release on the [Releases page](https://github.com/JasonBates/AeroSpace-Alph
 2. Unzip, move `AeroSpace.app` to `/Applications` and `bin/aerospace` somewhere on your `PATH`.
 3. Launch it and grant Accessibility access when asked, as with upstream.
 
-If you are setting up with an AI assistant, give it [docs/agent-setup.md](docs/agent-setup.md): a step-by-step guide to installing Alpha, mapping Caps Lock to the modifier with Karabiner-Elements, and adding trackpad swipes with SwipeAeroSpace.
+**No keyboard remapper is required.** Fresh installs use the bundled Alpha
+starter config: Option+H/J/K/L focuses windows, adding Shift moves them,
+Option+Return toggles Focus Mode, and Option+Shift+Return toggles fullscreen.
+Lone windows have a centred, resizable width; movement can rearrange tiles
+before crossing monitors. See the [quick start](docs/quick-start.md) for all
+shortcuts and the optional large-monitor margins. These defaults apply to
+builds containing the current starter config; older releases may still ship
+the upstream defaults.
+
+For an optional Caps Lock modifier and trackpad swipes, give an AI assistant
+[docs/agent-setup.md](docs/agent-setup.md). Karabiner-Elements and SwipeAeroSpace
+are conveniences, not dependencies of Alpha's layout features.
 
 Your existing `~/.aerospace.toml` works unchanged. The new keys and commands are listed above. To go back to stock AeroSpace, remove any Alpha-only keys from the config first, because stock rejects them.
 

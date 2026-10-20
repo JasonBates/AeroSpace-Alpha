@@ -1,5 +1,10 @@
 # Setting up AeroSpace Alpha with an AI assistant
 
+For a normal keyboard setup without extra apps, start with the
+[quick start](quick-start.md). Alpha's bundled config provides Option-based
+shortcuts. This page is the optional Caps Lock and trackpad customisation path;
+Karabiner-Elements and SwipeAeroSpace are not required to use Alpha.
+
 This page is written for an AI coding agent (Claude Code, Codex, or similar)
 that has been asked to install [AeroSpace Alpha](../README.md) and set it up
 the way I use it: AeroSpace as the window manager, **Caps Lock as the single
