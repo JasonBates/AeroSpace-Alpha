@@ -9,6 +9,22 @@ struct ResizeCommand: Command {
         guard let target = args.resolveTargetOrReportError(env, io) else { return .fail }
 
         if let window = target.windowOrNil,
+           args.dimension.val == .height,
+           let workspace = window.nodeWorkspace,
+           let frame = FocusMode.shared.frame(for: window, in: workspace)
+        {
+            let monitor = FocusMode.shared.destinationMonitor(for: workspace.workspaceMonitor, among: monitorInfos)
+            let fullHeight = monitor.visibleRectPaddedByOuterGaps.height - 1
+            let requestedHeight: CGFloat = switch args.units.val {
+                case .set(let unit): CGFloat(unit)
+                case .add(let unit): frame.height + CGFloat(unit)
+                case .subtract(let unit): frame.height - CGFloat(unit)
+            }
+            window.focusModeHeightAdjustment = min(fullHeight, max(min(200, fullHeight), requestedHeight)) - fullHeight
+            return .succ
+        }
+
+        if let window = target.windowOrNil,
            args.dimension.val == .smart || args.dimension.val == .width,
            let workspace = window.nodeWorkspace,
            ((workspace.rootTilingContainer.hasSingleLeafWindowRecursive &&

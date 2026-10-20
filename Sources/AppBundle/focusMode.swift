@@ -73,11 +73,13 @@ final class FocusMode {
             height: available.height - 1,
         ) ?? available.width * 0.66
         let width = window.singleWindowWidth(base: baseWidth, available: available.width)
+        let fullHeight = available.height - 1
+        let height = min(fullHeight, max(min(200, fullHeight), fullHeight + window.focusModeHeightAdjustment))
         return Rect(
             topLeftX: available.topLeftX + (available.width - width) / 2,
-            topLeftY: available.topLeftY,
+            topLeftY: available.topLeftY + (fullHeight - height) / 2,
             width: width,
-            height: available.height - 1,
+            height: height,
         )
     }
 

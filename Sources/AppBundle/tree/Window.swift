@@ -15,6 +15,8 @@ open class Window: TreeNode, Hashable {
     var layoutReason: LayoutReason = .standard
     // Temporary adjustment for this window while it is the only tiled window.
     var singleWindowWidthAdjustment: CGFloat = 0
+    // Height adjustment applies only in Focus Mode and follows this window.
+    var focusModeHeightAdjustment: CGFloat = 0
 
     func singleWindowWidth(base: CGFloat, available: CGFloat) -> CGFloat {
         min(available, max(min(200, available), base + singleWindowWidthAdjustment))

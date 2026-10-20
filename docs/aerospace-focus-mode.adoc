@@ -29,6 +29,14 @@ For example, use `ctrl-alt-cmd-z = 'focus-mode --stay-on-monitor'` on a laptop
 while keeping the default binding on a desktop. This choice lasts until Focus
 Mode ends, including when selecting another window in the same workspace.
 
+Use `resize height +100` or `resize height -100` to adjust the Focus Mode
+window's height while keeping it vertically centred. Width stays unchanged.
+The height is limited to the available display height, with a minimum of 200
+points (or the available height on smaller displays). The adjustment belongs
+to that window for its lifetime and does not affect its normal tiled layout.
+For example, bind `ctrl-alt-cmd-shift-equal` and `ctrl-alt-cmd-shift-minus` to
+these commands; keep the existing unshifted bindings for width.
+
 Keyboard focus commands can select another window in the same workspace while
 Focus Mode stays active. Clicking outside the focused window, switching
 workspaces, losing the focused window, or disabling AeroSpace exits the mode.

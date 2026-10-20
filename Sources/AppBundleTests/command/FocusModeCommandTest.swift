@@ -113,6 +113,62 @@ final class FocusModeCommandTest: XCTestCase {
         assertEquals(restored?.height, original.height)
     }
 
+    func testHeightResizeCentresClampsAndRestoresTiledLayout() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        let window = TestWindow.new(id: 1, parent: root)
+        let other = TestWindow.new(id: 2, parent: root)
+        assertTrue(window.focusWindow())
+        try await workspace.layoutWorkspace()
+        let original = try await window.getAxRect(.nonCancellable)
+        let weights = root.children.map(\.vWeight)
+        _ = await parseCommand("focus-mode --stay-on-monitor").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        let initial = FocusMode.shared.frame(for: window, in: workspace)!
+        let result = await parseCommand("resize height -100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(result.exitCode.rawValue, 0)
+        try await workspace.layoutWorkspace()
+        let reduced = try await window.getAxRect(.nonCancellable)
+        assertEquals(reduced?.height, initial.height - 100)
+        assertEquals(reduced?.width, initial.width)
+        assertEquals(reduced?.center, initial.center)
+        assertEquals(root.children.map(\.vWeight), weights)
+
+        assertTrue(other.focusWindow())
+        await FocusMode.shared.syncWithFocus()
+        assertEquals(FocusMode.shared.frame(for: other, in: workspace)?.height, initial.height)
+        assertTrue(window.focusWindow())
+        await FocusMode.shared.syncWithFocus()
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, initial.height - 100)
+        _ = await parseCommand("resize height 500").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 500)
+        _ = await parseCommand("resize height -99999").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 200)
+        _ = await parseCommand("resize height +99999").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, initial.height)
+        _ = await parseCommand("resize height -100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        _ = await parseCommand("focus-mode").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertEquals((try await window.getAxRect(.nonCancellable))?.height, original?.height)
+        _ = await parseCommand("focus-mode").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, initial.height - 100)
+    }
+
+    func testHeightResizeRestoresFloatingFrame() async throws {
+        let workspace = focus.workspace
+        let original = Rect(topLeftX: 70, topLeftY: 80, width: 500, height: 400)
+        let window = TestWindow.new(id: 1, parent: workspace.floatingWindowsContainer, rect: original)
+        assertTrue(window.focusWindow())
+        _ = await parseCommand("focus-mode").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        let initial = FocusMode.shared.frame(for: window, in: workspace)!
+        _ = await parseCommand("resize height -100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertEquals((try await window.getAxRect(.nonCancellable))?.height, initial.height - 100)
+        _ = await parseCommand("focus-mode").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        let restored = try await window.getAxRect(.nonCancellable)
+        assertEquals(restored?.size, original.size)
+        assertEquals(restored?.center, original.center)
+    }
+
     func testDoesNotMoveFloatingWindowWhenItsOriginalFrameIsUnavailable() async {
         let workspace = focus.workspace
         let window = TestWindow.new(id: 1, parent: workspace.floatingWindowsContainer)
