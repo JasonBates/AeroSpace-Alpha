@@ -49,12 +49,12 @@ final class AdaptiveLayoutTest: XCTestCase {
 
         let second = TestWindow.new(id: 2, parent: root, adaptiveWeight: WEIGHT_AUTO)
         try await workspace.layoutWorkspace()
-        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 643.2, y: 0, width: 633.6, height: 1080)
-        assertRect(try await first.getAxRect(.nonCancellable), x: 643.2, y: 0, width: 633.6, height: 539.5)
-        assertRect(try await second.getAxRect(.nonCancellable), x: 643.2, y: 539.5, width: 633.6, height: 539.5)
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 326.4, y: 0, width: 1267.2, height: 1080)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 0, width: 1267.2, height: 539.5)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 326.4, y: 539.5, width: 1267.2, height: 539.5)
     }
 
-    func testSingleColumnUsesTwoColumnWidthFromFourthStructuralRow() async throws {
+    func testSingleColumnUsesTwoColumnWidthFromSecondStructuralRow() async throws {
         let workspace = focus.workspace
         let root = workspace.rootTilingContainer
         root.changeOrientation(.v)
@@ -62,11 +62,9 @@ final class AdaptiveLayoutTest: XCTestCase {
         for row in 1 ... 8 {
             TestWindow.new(id: UInt32(row), parent: root, adaptiveWeight: row == 1 ? 1 : WEIGHT_AUTO)
             try await workspace.layoutWorkspace()
-            if [3, 4, 5, 8].contains(row) {
+            if row >= 2 {
                 assertEquals(root.tilingFootprint, TilingFootprint(columns: 1, rows: row))
-                let expectedX: CGFloat = row < 4 ? 643.2 : 326.4
-                let expectedWidth: CGFloat = row < 4 ? 633.6 : 1267.2
-                assertRect(workspace.lastAppliedLayoutVirtualRect, x: expectedX, y: 0, width: expectedWidth, height: 1080)
+                assertRect(workspace.lastAppliedLayoutVirtualRect, x: 326.4, y: 0, width: 1267.2, height: 1080)
             }
         }
     }
@@ -430,8 +428,8 @@ final class AdaptiveLayoutTest: XCTestCase {
         assertEquals(result.exitCode.rawValue, 0)
         try await workspace.layoutWorkspace()
 
-        assertRect(try await first.getAxRect(.nonCancellable), x: 643.2, y: 0, width: 633.6, height: 639.5)
-        assertRect(try await second.getAxRect(.nonCancellable), x: 643.2, y: 639.5, width: 633.6, height: 439.5)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 0, width: 1267.2, height: 639.5)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 326.4, y: 639.5, width: 1267.2, height: 439.5)
     }
 
     func testMouseWidthResizeSurvivesAdaptiveAreaChange() async throws {

@@ -37,7 +37,7 @@ In short, compared with stock AeroSpace:
 
 - **Multi-monitor focus and movement work.** Focus lands on the window you asked for, hidden windows stay hidden and stop costing GPU time, a workspace on one monitor no longer flips because of an app on another, and displays can reconfigure without a crash.
 - **Floating windows behave.** They can be resized, centred, nudged from the keyboard and placed by rule, and dragged across monitors without jumping back.
-- **Workspace bounds adapt to the tiling structure.** On selected monitors, one structural column keeps narrow centred side margins, two columns or a stack of at least four rows use wider centred margins, three or more columns use the full usable width, and a single structural row keeps centred top and bottom margins.
+- **Workspace bounds adapt to the tiling structure.** On selected monitors, a lone window keeps narrow centred bounds, two columns or a stack of at least two rows use wider centred bounds, three or more columns use the full usable width, and a single structural row keeps centred top and bottom margins.
 - **A lone window gets a sensible width**, resizable from the keyboard, and Focus Mode centres and dims on demand.
 - **A native focused-window border**, if you want one, with no extra daemon.
 - **Workspace bars get events** instead of polling.
@@ -49,7 +49,7 @@ In short, compared with stock AeroSpace:
 
 Adaptive layout is an opt-in, per-monitor policy for the whole tiled workspace.
 One structural column uses 33% of the usable monitor width, two use 66%, and
-three or more use the full width. A one-column stack of four or more rows also
+three or more use the full width. A one-column stack of two or more rows also
 uses the two-column width, capped there as the stack grows. One structural row
 uses 90% of the usable height; two or more use the full height. The rectangle is centred on both axes.
 "Usable" means the monitor rectangle after the configured outer gaps, and the

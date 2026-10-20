@@ -36,7 +36,7 @@ The last boolean is the fallback for monitors that do not match. Each
 percentage must be from 1 to 100, and the one-column width cannot exceed the
 two-column width. When enabled, one structural column occupies 33% of the
 usable monitor width, two occupy 66%, and three or more occupy all of it. A
-one-column stack of four or more rows uses the two-column width and stays capped
+one-column stack of two or more rows uses the two-column width and stays capped
 at that width as more rows are added. One structural row occupies 90% of the
 usable height; two or more occupy all of it.
 The result is centred horizontally and vertically. The usable rectangle already
