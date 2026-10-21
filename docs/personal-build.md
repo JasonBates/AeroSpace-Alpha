@@ -166,7 +166,8 @@ Focus Mode is a reversible centred view for the focused window.
 On an adaptive display it uses the lone-window width and single-row height,
 including the vertical margins. On other displays it uses the lone-window
 width rule, or 66% of the usable display width when no rule is configured.
-Width and height resize commands adjust this centred frame. A translucent dark layer dims the other
+Width and height resize commands adjust this centred frame. Focus Mode has a
+600-point minimum height, capped by the usable display height on smaller screens. A translucent dark layer dims the other
 windows on every display. The layer does not take keyboard or mouse input.
 On a multi-display setup the focused window appears on the middle display
 (or the macOS main display when there are two). It returns to its original

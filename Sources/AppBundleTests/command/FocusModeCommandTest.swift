@@ -133,7 +133,7 @@ final class FocusModeCommandTest: XCTestCase {
         )
 
         _ = await parseCommand("resize height 500").cmdOrDie.run(.defaultEnv, .emptyStdin)
-        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 500)
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 600)
         _ = await parseCommand("resize height +99999").cmdOrDie.run(.defaultEnv, .emptyStdin)
         assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 1079)
 
@@ -229,9 +229,15 @@ final class FocusModeCommandTest: XCTestCase {
         await FocusMode.shared.syncWithFocus()
         assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, initial.height - 100)
         _ = await parseCommand("resize height 500").cmdOrDie.run(.defaultEnv, .emptyStdin)
-        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 500)
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 600)
         _ = await parseCommand("resize height -99999").cmdOrDie.run(.defaultEnv, .emptyStdin)
-        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 200)
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 600)
+        _ = await parseCommand("resize height -99999").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 600)
+        _ = await parseCommand("resize height +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 700)
+        window.focusModeHeightAdjustment = -99999
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 600)
         _ = await parseCommand("resize height +99999").cmdOrDie.run(.defaultEnv, .emptyStdin)
         assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, initial.height)
         _ = await parseCommand("resize height -100").cmdOrDie.run(.defaultEnv, .emptyStdin)
@@ -240,6 +246,20 @@ final class FocusModeCommandTest: XCTestCase {
         assertEquals((try await window.getAxRect(.nonCancellable))?.height, original?.height)
         _ = await parseCommand("focus-mode").cmdOrDie.run(.defaultEnv, .emptyStdin)
         assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, initial.height - 100)
+    }
+
+    func testMinimumHeightFitsSmallDisplay() async {
+        let monitor = TestFocusMonitor(x: 0, isMain: true, displayHeight: 540)
+        monitorInfosForTests = [monitor]
+        let workspace = focus.workspace
+        assertTrue(monitor.setActiveWorkspace(workspace))
+        let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
+        assertTrue(window.focusWindow())
+        _ = await parseCommand("focus-mode --stay-on-monitor").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        _ = await parseCommand("resize height -99999").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 539)
+        window.focusModeHeightAdjustment = -99999
+        assertEquals(FocusMode.shared.frame(for: window, in: workspace)?.height, 539)
     }
 
     func testHeightResizeRestoresFloatingFrame() async throws {
@@ -274,8 +294,9 @@ private struct TestFocusMonitor: MonitorInfo {
     let isMain: Bool
     var id: Int = 1
     var name: String = "Focus Mode test display"
+    var displayHeight: CGFloat = 1080
     var monitorAppKitNsScreenScreensId: Int { id }
-    var rect: Rect { Rect(topLeftX: x, topLeftY: 0, width: 1920, height: 1080) }
+    var rect: Rect { Rect(topLeftX: x, topLeftY: 0, width: 1920, height: displayHeight) }
     var visibleRect: Rect { rect }
     var width: CGFloat { rect.width }
     var height: CGFloat { rect.height }

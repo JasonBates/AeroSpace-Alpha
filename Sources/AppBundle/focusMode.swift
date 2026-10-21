@@ -4,6 +4,7 @@ import AppKit
 @MainActor
 final class FocusMode {
     static let shared = FocusMode()
+    static let minimumHeight: CGFloat = 600
 
     private(set) var workspaceName: String?
     private(set) var windowId: UInt32?
@@ -70,7 +71,7 @@ final class FocusMode {
         let fullHeight = geometry.available.height - 1
         let height = min(
             fullHeight,
-            max(min(200, fullHeight), geometry.frame.height + window.focusModeHeightAdjustment),
+            max(min(Self.minimumHeight, fullHeight), geometry.frame.height + window.focusModeHeightAdjustment),
         )
         return Rect(
             topLeftX: geometry.frame.center.x - width / 2,

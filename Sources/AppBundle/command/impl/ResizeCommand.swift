@@ -20,7 +20,7 @@ struct ResizeCommand: Command {
                 case .add(let unit): frame.height + CGFloat(unit)
                 case .subtract(let unit): frame.height - CGFloat(unit)
             }
-            window.focusModeHeightAdjustment = min(fullHeight, max(min(200, fullHeight), requestedHeight)) - geometry.frame.height
+            window.focusModeHeightAdjustment = min(fullHeight, max(min(FocusMode.minimumHeight, fullHeight), requestedHeight)) - geometry.frame.height
             return .succ
         }
 
