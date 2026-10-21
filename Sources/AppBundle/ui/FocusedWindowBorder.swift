@@ -36,7 +36,7 @@ final class FocusedWindowBorder {
                 colorHex: config.focusedWindowBorderColor,
                 width: config.focusedWindowBorderWidth,
                 opacityPercent: config.focusedWindowBorderOpacity,
-                cornerRadius: config.focusedWindowBorderRadius,
+                cornerRadius: config.borderCornerRadius(appId: window.app.rawAppBundleId),
                 inset: config.focusedWindowBorderInset,
             ),
         )

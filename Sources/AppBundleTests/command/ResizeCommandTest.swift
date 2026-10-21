@@ -79,7 +79,7 @@ final class ResizeCommandTest: XCTestCase {
         assertEquals(window3.hWeight, 3)
     }
 
-    func testHeight_climbsToVerticalAncestor() async {
+    func testHeight_climbsToVerticalAncestor() async throws {
         // Root is horizontal; height must locate the nested vertical tile container.
         var window1: Window!
         var window2: Window!
@@ -91,14 +91,14 @@ final class ResizeCommandTest: XCTestCase {
             }
         }
         _ = window1.focusWindow()
+        try await focus.workspace.layoutWorkspace()
 
-        await parseCommand("resize height +2").cmdOrDie.run(.defaultEnv, .emptyStdin)
-        // diff = +2, childDiff = 2 / (2 - 1) = 2
-        assertEquals(window1.vWeight, 6)
-        assertEquals(window2.vWeight, 2)
+        await parseCommand("resize height +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(window1.vWeight, 639.5)
+        assertEquals(window2.vWeight, 439.5)
     }
 
-    func testSmart_usesImmediateParentOrientation() async {
+    func testSmart_usesImmediateParentOrientation() async throws {
         // .smart resizes along the immediate tile container's axis, even when an ancestor
         // would also qualify.
         var window1: Window!
@@ -112,13 +112,125 @@ final class ResizeCommandTest: XCTestCase {
             sibling = TestWindow.new(id: 3, parent: $0, adaptiveWeight: 4)
         }
         _ = window1.focusWindow()
+        try await focus.workspace.layoutWorkspace()
+        let siblingWidth = sibling.hWeight
 
-        await parseCommand("resize smart +2").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        await parseCommand("resize smart +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
         // immediate parent is vertical; resize is along .v
-        assertEquals(window1.vWeight, 6)
-        assertEquals(window2.vWeight, 2)
+        assertEquals(window1.vWeight, 639.5)
+        assertEquals(window2.vWeight, 439.5)
         // The horizontal sibling at the root is untouched.
-        assertEquals(sibling.hWeight, 4)
+        assertEquals(sibling.hWeight, siblingWidth)
+    }
+
+    func testConsecutiveHeightCommandsUseUpdatedIntendedHeightBeforeLayout() async throws {
+        let root = focus.workspace.rootTilingContainer
+        root.changeOrientation(.v)
+        let first = TestWindow.new(id: 1, parent: root)
+        let second = TestWindow.new(id: 2, parent: root)
+        assertTrue(first.focusWindow())
+        try await focus.workspace.layoutWorkspace()
+
+        _ = await parseCommand("resize height +50").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        _ = await parseCommand("resize height +50").cmdOrDie.run(.defaultEnv, .emptyStdin)
+
+        assertEquals(first.vWeight, 639.5)
+        assertEquals(second.vWeight, 439.5)
+    }
+
+    func testHeightResizeSaturatesUnequalDonorsAndRepeatedCommandsStayStable() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        root.changeOrientation(.v)
+        let target = TestWindow.new(id: 1, parent: root)
+        let firstDonor = TestWindow.new(id: 2, parent: root)
+        let secondDonor = TestWindow.new(id: 3, parent: root)
+        assertTrue(target.focusWindow())
+        try await workspace.layoutWorkspace()
+        target.vWeight = 200
+        firstDonor.vWeight = 300
+        secondDonor.vWeight = 579
+        try await workspace.layoutWorkspace()
+
+        _ = await parseCommand("resize height +99999").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals([target.vWeight, firstDonor.vWeight, secondDonor.vWeight], [679, 200, 200])
+        _ = await parseCommand("resize height +99999").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals([target.vWeight, firstDonor.vWeight, secondDonor.vWeight], [679, 200, 200])
+
+        _ = await parseCommand("resize height -99999").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals([target.vWeight, firstDonor.vWeight, secondDonor.vWeight], [200, 439.5, 439.5])
+        _ = await parseCommand("resize height 400").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals([target.vWeight, firstDonor.vWeight, secondDonor.vWeight], [400, 339.5, 339.5])
+    }
+
+    func testNestedConsecutiveHeightCommandsUseLiveAncestorHeight() async throws {
+        for adaptiveEnabled in [false, true] {
+            setUpWorkspacesForTests()
+            config.adaptiveLayout.enabled = .constant(adaptiveEnabled)
+            let workspace = focus.workspace
+            let root = workspace.rootTilingContainer
+            root.changeOrientation(.v)
+            var innerTop: Window!
+            var innerBottom: Window!
+            var spanning: Window!
+            TilingContainer.newHTiles(parent: root, adaptiveWeight: 1).apply {
+                TilingContainer.newVTiles(parent: $0, adaptiveWeight: 1).apply {
+                    innerTop = TestWindow.new(id: 1, parent: $0)
+                    innerBottom = TestWindow.new(id: 2, parent: $0)
+                }
+                spanning = TestWindow.new(id: 3, parent: $0)
+            }
+            TestWindow.new(id: 4, parent: root)
+            try await workspace.layoutWorkspace()
+
+            assertTrue(spanning.focusWindow())
+            _ = await parseCommand("resize height +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+            assertTrue(innerTop.focusWindow())
+            _ = await parseCommand("resize height +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+
+            assertEquals(innerTop.vWeight, 419.75)
+            assertEquals(innerBottom.vWeight, 219.75)
+            try await workspace.layoutWorkspace()
+            let topFrame = try await innerTop.getAxRect(.nonCancellable).orDie()
+            let bottomFrame = try await innerBottom.getAxRect(.nonCancellable).orDie()
+            XCTAssertEqual(topFrame.height, 419.75, accuracy: 0.001)
+            XCTAssertEqual(bottomFrame.height, 219.75, accuracy: 0.001)
+        }
+    }
+
+    func testNestedConsecutiveHeightCommandsMatchAdaptiveAndNormalDimensionNormalization() async throws {
+        for adaptiveEnabled in [false, true] {
+            setUpWorkspacesForTests()
+            config.adaptiveLayout.enabled = .constant(adaptiveEnabled)
+            let workspace = focus.workspace
+            let root = workspace.rootTilingContainer
+            root.changeOrientation(.v)
+            var innerTop: Window!
+            var innerBottom: Window!
+            var spanning: Window!
+            TilingContainer.newHTiles(parent: root, adaptiveWeight: 1).apply {
+                TilingContainer.newVTiles(parent: $0, adaptiveWeight: 1).apply {
+                    innerTop = TestWindow.new(id: 1, parent: $0)
+                    innerBottom = TestWindow.new(id: 2, parent: $0)
+                }
+                spanning = TestWindow.new(id: 3, parent: $0)
+            }
+            TestWindow.new(id: 4, parent: root)
+            try await workspace.layoutWorkspace()
+            innerTop.vWeight = 323.7
+            innerBottom.vWeight = 215.8
+            try await workspace.layoutWorkspace()
+
+            assertTrue(spanning.focusWindow())
+            _ = await parseCommand("resize height +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+            assertTrue(innerTop.focusWindow())
+            _ = await parseCommand("resize height +20").cmdOrDie.run(.defaultEnv, .emptyStdin)
+
+            let expectedTop: CGFloat = adaptiveEnabled ? 403.7 : 393.7
+            let expectedBottom: CGFloat = adaptiveEnabled ? 235.8 : 245.8
+            XCTAssertEqual(innerTop.vWeight, expectedTop, accuracy: 0.001)
+            XCTAssertEqual(innerBottom.vWeight, expectedBottom, accuracy: 0.001)
+        }
     }
 
     func testSmartOpposite_resizesAncestorContainer() async {

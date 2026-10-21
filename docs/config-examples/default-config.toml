@@ -29,6 +29,10 @@ enable-normalization-opposite-orientation-for-nested-containers = true
 # You can set 0 to disable the padding feature
 accordion-padding = 30
 
+# Minimum tiled window height in macOS display points. AeroSpace reduces this
+# only when the available height cannot fit every stacked window at the minimum.
+minimum-window-height = 200
+
 # Possible values: tiles|accordion
 default-root-container-layout = 'tiles'
 
@@ -89,6 +93,9 @@ focused-window-border-opacity = 100
 # per-window corner radius, so this is a global value - tune it to match your apps.
 # Fallback value (if you omit the key): focused-window-border-radius = 10
 focused-window-border-radius = 10
+# Optional exact app bundle IDs with a different corner radius.
+# Unlisted apps use focused-window-border-radius.
+# focused-window-border-radius-by-app = { 'com.apple.mail' = 24 }
 # Pull the border this many points back into the window so the window's own rounded
 # corner masks any radius mismatch (hides corner gaps). 0 = border fully outside.
 # Fallback value (if you omit the key): focused-window-border-inset = 0
@@ -155,6 +162,7 @@ gaps.outer.right =      0
     # Remove --stay-on-monitor if you prefer Focus Mode on the middle/main display.
     alt-enter = 'focus-mode --stay-on-monitor'
     alt-shift-enter = 'fullscreen'
+    alt-0 = 'balance-sizes'
 
     # See: https://nikitabobko.github.io/AeroSpace/commands#layout
     alt-slash = 'layout tiles horizontal vertical'

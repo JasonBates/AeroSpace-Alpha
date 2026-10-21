@@ -64,7 +64,9 @@ between rows and columns.
 
 These choices work independently: two windows above a third keep the side
 margins while using the full height. Resize the splits as usual; uneven
-proportions survive layout changes. Focus Mode and fullscreen remain available.
+proportions survive layout changes. Tiled windows have a configurable 200-point
+minimum height on every display, so a vertical resize cannot collapse a stacked
+window into a strip. Focus Mode and fullscreen remain available.
 
 Enable this on the displays you choose and adjust the percentages to suit you.
 The animation uses 33% and 66% widths, with 90% height for a single row. Normal

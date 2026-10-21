@@ -105,6 +105,23 @@ Mode uses the same per-window width adjustment, so resizing there carries into
 a later lone adaptive layout for that window. On other monitors, Focus Mode
 keeps its existing width rule or 66% fallback.
 
+## Vertical minimum and standard-size reset
+
+`minimum-window-height = 200` applies to tiled windows on adaptive and normal
+displays. The value is in macOS display points. A vertical tile adds the
+recursive minimums of its children and its inner gaps; a horizontal tile uses
+the largest child requirement. Vertical accordion groups include their visible
+reveal padding. Keyboard and mouse resizing stop when the target or a donor
+reaches its floor. If the available height cannot fit every requested minimum,
+inner vertical gaps shrink first, then the available content is divided into
+positive frames that remain inside the container.
+
+The starter binding `alt-0 = 'balance-sizes'` restores equal tiled splits on
+the target workspace. It also clears a lone window's width adjustment and Focus
+Mode width and height adjustments, and cancels an active resize gesture so a
+queued mouse event cannot restore stale weights. Floating window frames are not
+changed.
+
 ## Single-window width
 
 Alpha adapts the single-window and accordion aspect-ratio work in
@@ -173,6 +190,19 @@ preserves the workspace tree and tile weights;
 for a floating window it also restores the original frame. AeroSpace full
 screen takes precedence and exits Focus Mode.
 
+
+## App-specific border corners
+
+Some apps draw different rounded corners. Keep a default radius and override
+individual apps by their exact bundle ID, without changing other windows:
+
+```toml
+focused-window-border-radius = 10
+focused-window-border-radius-by-app = { 'com.apple.mail' = 24 }
+```
+
+Unlisted apps use the default radius. Radius values are non-negative macOS
+display points. Colour, thickness and inset still use the shared border settings.
 
 ## Upstream pull requests included
 

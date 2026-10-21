@@ -25,6 +25,7 @@ if you use Option to type special characters, choose other modifiers in the conf
 | Fill the monitor with the focused window; press again to restore | Option + Shift + Return |
 | Resize the split, or the width of a lone/focused window | Option + minus/equal |
 | Resize height | Option + Shift + minus/equal |
+| Reset tiled sizes on the workspace | Option + 0 |
 | Switch workspace | Option + 1–9 |
 | Send a window to a workspace | Option + Shift + 1–9 |
 | Toggle horizontal/vertical tiling | Option + slash |
@@ -47,6 +48,14 @@ is at least 2000 macOS display points wide. macOS scaling determines display
 points; a panel's advertised pixel resolution is not the same measurement.
 Multiple tiled windows use the full working area. No monitor names, workspace
 assignments or app-specific rules are assumed.
+
+Tiled windows keep at least 200 macOS display points of height by default on
+every display. Set the top-level `minimum-window-height` option to another
+positive integer if needed. Inner vertical gaps shrink before an achievable
+window floor; when the display cannot fit every requested minimum, AeroSpace
+keeps every frame positive and inside the available area. Option+0 runs
+`balance-sizes`, restoring equal tiled splits and the standard lone-window and
+Focus Mode sizes for the current workspace.
 
 Use the AeroSpace menu bar's **Open config** action to edit these choices. With
 no existing config, it creates an editable copy at `~/.aerospace.toml`. After

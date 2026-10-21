@@ -30,6 +30,12 @@ it changes height if the parent has vertical orientation
 For floating windows, the window is resized around its centre and kept inside its monitor.
 `smart` changes the longer side and `smart-opposite` the shorter side, keeping the aspect ratio.
 
+For tiled height changes, the target and its donors respect
+`minimum-window-height` (200 macOS display points by default). Inner vertical
+gaps shrink first when the requested floors do not fit. If the container is
+still too short, its bounds win and every tiled frame receives a positive
+share.
+
 Second argument controls how much the size changes
 
 * If the `<number>` is prefixed with `+` then the dimension is increased

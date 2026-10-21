@@ -25,6 +25,41 @@ private struct AdaptiveMouseHorizontalClampAttempt {
     }
 }
 
+private struct VerticalMouseClampAttempt {
+    let windowId: UInt32
+    let observedY: CGFloat
+    let observedHeight: CGFloat
+    let acceptedY: CGFloat
+    let acceptedHeight: CGFloat
+
+    func matches(_ other: VerticalMouseClampAttempt) -> Bool {
+        windowId == other.windowId &&
+            observedY == other.observedY &&
+            observedHeight == other.observedHeight &&
+            acceptedY == other.acceptedY &&
+            acceptedHeight == other.acceptedHeight
+    }
+}
+
+private struct VerticalMouseResizeState {
+    let windowId: UInt32
+    let workspace: ObjectIdentifier
+    let monitorId: Int
+    let available: Rect
+    let adaptivePolicy: AdaptiveMouseResizePolicy
+    let topology: [AdaptiveTopologyItem]
+    let minimumWindowHeight: Int
+    let verticalGap: CGFloat
+    let accordionPadding: Int
+    let target: TreeNode?
+    let parent: TilingContainer?
+    let donorIndices: [Int]
+    let lowerEdge: Bool
+    let baselineWindowFrame: Rect
+    let baselineTargetHeight: CGFloat?
+    let baselineWeights: [CGFloat]
+}
+
 private struct AdaptiveMouseResizePolicy {
     let enabled: Bool
     let oneColumnWidthPercent: Int
@@ -70,6 +105,12 @@ private var adaptiveMouseResizeState: AdaptiveMouseResizeState?
 private var adaptiveMouseResizeInvalidatedWindowId: UInt32?
 
 @MainActor
+private var verticalMouseClampAttempt: VerticalMouseClampAttempt?
+
+@MainActor
+private var verticalMouseResizeState: VerticalMouseResizeState?
+
+@MainActor
 private func adaptiveMouseResizePolicy(_ workspace: Workspace) -> AdaptiveMouseResizePolicy {
     let adaptive = config.adaptiveLayout
     return AdaptiveMouseResizePolicy(
@@ -104,10 +145,12 @@ func resizedObs(_: AXObserver, ax: AXUIElement, notif: CFString, _: UnsafeMutabl
 
 @MainActor
 func resetManipulatedWithMouseIfPossible() async throws {
-    guard let windowId = currentlyManipulatedWithMouseWindowId else { return }
+    guard let windowId = currentlyManipulatedWithMouseWindowId ?? adaptiveMouseResizeInvalidatedWindowId else { return }
     currentlyManipulatedWithMouseWindowId = nil
     adaptiveMouseResizeState = nil
     adaptiveMouseResizeInvalidatedWindowId = nil
+    verticalMouseClampAttempt = nil
+    verticalMouseResizeState = nil
     for workspace in Workspace.all {
         workspace.resetResizeWeightBeforeResizeRecursive()
     }
@@ -127,6 +170,23 @@ func resetManipulatedWithMouseIfPossible() async throws {
             try await window.bindFloatingWindowToMonitorUnderCenter()
         }
     }
+}
+
+@MainActor
+func cancelResizeWithMouseGesture(for workspace: Workspace) {
+    workspace.resetResizeWeightBeforeResizeRecursive()
+    guard let windowId = currentlyManipulatedWithMouseWindowId,
+          Window.get(byId: windowId)?.nodeWorkspace === workspace
+    else { return }
+    resizeWithMouseTask?.cancel()
+    resizeWithMouseTask = nil
+    adaptiveMouseResizeState = nil
+    verticalMouseClampAttempt = nil
+    verticalMouseResizeState = nil
+    currentlyManipulatedWithMouseWindowId = nil
+    // Refuse any already queued AX notification from the cancelled gesture. The
+    // normal mouse-release cleanup clears this before a new gesture starts.
+    adaptiveMouseResizeInvalidatedWindowId = windowId
 }
 
 @MainActor
@@ -170,14 +230,22 @@ func resizeWithMouse(_ window: Window) async throws {
              .macosPopupWindowsContainer, .macosHiddenAppsWindowsContainer:
             return // Nothing to do for floating, or unconventional windows
         case .tilingContainer:
-            guard let rect = try await window.getAxRect(.cancellable) else { return }
+            guard var rect = try await window.getAxRect(.cancellable) else { return }
             guard let lastAppliedLayoutRect = window.lastAppliedLayoutPhysicalRect else { return }
             let isFirstEvent = currentlyManipulatedWithMouseWindowId != window.windowId
             if isFirstEvent {
                 adaptiveMouseResizeState = nil
-                adaptiveMouseResizeInvalidatedWindowId = nil
+                verticalMouseClampAttempt = nil
+                verticalMouseResizeState = nil
+                if adaptiveMouseResizeInvalidatedWindowId != window.windowId {
+                    adaptiveMouseResizeInvalidatedWindowId = nil
+                }
             }
             let workspace = window.nodeWorkspace.orDie()
+            if adaptiveMouseResizeInvalidatedWindowId == window.windowId {
+                currentlyManipulatedWithMouseWindowId = window.windowId
+                return
+            }
             let mousePolicy = adaptiveMouseResizePolicy(workspace)
             let adaptiveEnabled = mousePolicy.enabled
             let isInFocusMode = FocusMode.shared.frame(for: window, in: workspace) != nil
@@ -310,6 +378,7 @@ func resizeWithMouse(_ window: Window) async throws {
                                 adaptiveMouseResizeState = updatedState
                                 window.setAxFrame(clampedFrame.topLeftCorner, clampedFrame.size)
                             }
+                            rect = clampedFrame
                         } else if state.lastAttemptedHorizontalClamp != nil {
                             var updatedState = state
                             updatedState.lastAttemptedHorizontalClamp = nil
@@ -334,11 +403,7 @@ func resizeWithMouse(_ window: Window) async throws {
                 (lastAppliedLayoutRect.minX - rect.minX, lParent, 0, lOwnIndex),
                 (rect.maxX - lastAppliedLayoutRect.maxX, rParent, rOwnIndex.map { $0 + 1 }, rParent?.children.count),
             ]
-            let table: [(CGFloat, TilingContainer?, Int?, Int?)] = horizontalTable + [
-                (rect.maxY - lastAppliedLayoutRect.maxY, dParent, dOwnIndex.map { $0 + 1 }, dParent?.children.count), // Vertical, to the down of the window
-                (lastAppliedLayoutRect.minY - rect.minY, uParent, 0,                        uOwnIndex),               // Vertical, to the up of the window
-            ]
-            for (diff, parent, startIndex, pastTheEndIndex) in table {
+            for (diff, parent, startIndex, pastTheEndIndex) in horizontalTable {
                 if let parent, let startIndex, let pastTheEndIndex, pastTheEndIndex - startIndex > 0 && abs(diff) > 5 { // 5 pixels should be enough to fight with accumulated floating precision error
                     let siblingDiff = diff.div(pastTheEndIndex - startIndex).orDie()
                     let orientation = parent.orientation
@@ -352,6 +417,133 @@ func resizeWithMouse(_ window: Window) async throws {
                         .forEach { $0.setWeight(orientation, $0.getWeightBeforeResize(orientation) + diff) }
                     for sibling in parent.children[startIndex ..< pastTheEndIndex] {
                         sibling.setWeight(orientation, sibling.getWeightBeforeResize(orientation) - siblingDiff)
+                    }
+                }
+            }
+
+            if verticalMouseResizeState == nil {
+                let verticalAttempts: [(diff: CGFloat, parent: TilingContainer?, ownIndex: Int?, lowerEdge: Bool)] = [
+                    (rect.maxY - lastAppliedLayoutRect.maxY, dParent, dOwnIndex, true),
+                    (lastAppliedLayoutRect.minY - rect.minY, uParent, uOwnIndex, false),
+                ]
+                if let attempt = verticalAttempts
+                    .filter({ abs($0.diff) > 5 })
+                    .max(by: { abs($0.diff) < abs($1.diff) })
+                {
+                    var target: TreeNode?
+                    var parent: TilingContainer?
+                    var donorIndices: [Int] = []
+                    var baselineWeights: [CGFloat] = []
+                    var baselineTargetHeight: CGFloat?
+                    if let attemptParent = attempt.parent, let ownIndex = attempt.ownIndex {
+                        let attemptTarget = attemptParent.children[ownIndex]
+                        let children = tiledParticipatingChildren(attemptParent)
+                        if let targetIndex = children.firstIndex(where: { $0 === attemptTarget }) {
+                            let donors = attempt.lowerEdge
+                                ? Array(children.indices.suffix(from: targetIndex + 1))
+                                : Array(children.indices.prefix(upTo: targetIndex))
+                            let rawWeights = children.map { $0.getWeightBeforeResize(.v) }
+                            let weights = intendedTiledVerticalWeights(
+                                parent: attemptParent,
+                                workspace: workspace,
+                                desiredWeights: rawWeights,
+                            ) ?? rawWeights
+                            if !donors.isEmpty, let targetHeight = tiledPhysicalHeight(
+                                node: attemptTarget,
+                                parent: attemptParent,
+                                workspace: workspace,
+                                desiredWeights: weights,
+                            ) {
+                                target = attemptTarget
+                                parent = attemptParent
+                                donorIndices = donors
+                                baselineWeights = weights
+                                baselineTargetHeight = targetHeight
+                            }
+                        }
+                    }
+                    verticalMouseResizeState = VerticalMouseResizeState(
+                        windowId: window.windowId,
+                        workspace: ObjectIdentifier(workspace),
+                        monitorId: workspace.workspaceMonitor.monitorAppKitNsScreenScreensId,
+                        available: workspace.workspaceMonitor.visibleRectPaddedByOuterGaps,
+                        adaptivePolicy: mousePolicy,
+                        topology: adaptiveTopologySignature(workspace.rootTilingContainer),
+                        minimumWindowHeight: config.minimumWindowHeight,
+                        verticalGap: CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitor).inner.vertical),
+                        accordionPadding: config.accordionPadding,
+                        target: target,
+                        parent: parent,
+                        donorIndices: donorIndices,
+                        lowerEdge: attempt.lowerEdge,
+                        baselineWindowFrame: lastAppliedLayoutRect,
+                        baselineTargetHeight: baselineTargetHeight,
+                        baselineWeights: baselineWeights,
+                    )
+                }
+            }
+            if let state = verticalMouseResizeState {
+                let verticalGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitor).inner.vertical)
+                guard state.windowId == window.windowId,
+                      state.workspace == ObjectIdentifier(workspace),
+                      state.monitorId == workspace.workspaceMonitor.monitorAppKitNsScreenScreensId,
+                      state.available == workspace.workspaceMonitor.visibleRectPaddedByOuterGaps,
+                      state.adaptivePolicy.matches(mousePolicy),
+                      state.minimumWindowHeight == config.minimumWindowHeight,
+                      state.verticalGap == verticalGap,
+                      state.accordionPadding == config.accordionPadding,
+                      adaptiveTopologyMatches(state.topology, adaptiveTopologySignature(workspace.rootTilingContainer))
+                else {
+                    verticalMouseResizeState = nil
+                    adaptiveMouseResizeInvalidatedWindowId = window.windowId
+                    currentlyManipulatedWithMouseWindowId = window.windowId
+                    return
+                }
+                let diff = state.lowerEdge
+                    ? rect.maxY - state.baselineWindowFrame.maxY
+                    : state.baselineWindowFrame.minY - rect.minY
+                var acceptedDelta: CGFloat? = 0 // Outer workspace edges cannot move.
+                if let target = state.target,
+                   let parent = state.parent,
+                   let baselineTargetHeight = state.baselineTargetHeight
+                {
+                    acceptedDelta = resizeTiledVertically(
+                        node: target,
+                        parent: parent,
+                        requestedPhysicalHeight: baselineTargetHeight + diff,
+                        workspace: workspace,
+                        donorIndices: state.donorIndices,
+                        baselineWeights: state.baselineWeights,
+                    )?.acceptedDelta
+                }
+                if let acceptedDelta {
+                    if abs(diff - acceptedDelta) > adaptiveMouseGeometryEpsilon {
+                        let acceptedWindowHeight = max(
+                            adaptiveMouseGeometryEpsilon,
+                            state.baselineWindowFrame.height + acceptedDelta,
+                        )
+                        let acceptedWindowY = state.lowerEdge
+                            ? state.baselineWindowFrame.minY
+                            : state.baselineWindowFrame.maxY - acceptedWindowHeight
+                        let clampedFrame = Rect(
+                            topLeftX: rect.minX,
+                            topLeftY: acceptedWindowY,
+                            width: rect.width,
+                            height: acceptedWindowHeight,
+                        )
+                        let clampAttempt = VerticalMouseClampAttempt(
+                            windowId: window.windowId,
+                            observedY: rect.minY,
+                            observedHeight: rect.height,
+                            acceptedY: acceptedWindowY,
+                            acceptedHeight: acceptedWindowHeight,
+                        )
+                        if verticalMouseClampAttempt?.matches(clampAttempt) != true {
+                            verticalMouseClampAttempt = clampAttempt
+                            window.setAxFrame(clampedFrame.topLeftCorner, clampedFrame.size)
+                        }
+                    } else {
+                        verticalMouseClampAttempt = nil
                     }
                 }
             }

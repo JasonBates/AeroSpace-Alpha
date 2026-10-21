@@ -151,8 +151,10 @@ private let configParser: [String: any ParserProtocol<Config>] = [
     "focused-window-border-width": Parser(\.focusedWindowBorderWidth, parseInt),
     "focused-window-border-opacity": Parser(\.focusedWindowBorderOpacity, parseInt),
     "focused-window-border-radius": Parser(\.focusedWindowBorderRadius, parseInt),
+    "focused-window-border-radius-by-app": Parser(\.focusedWindowBorderRadiusByApp, parseBorderRadiusByApp),
     "focused-window-border-inset": Parser(\.focusedWindowBorderInset, parseInt),
     "accordion-padding": Parser(\.accordionPadding, parseInt),
+    "minimum-window-height": Parser(\.minimumWindowHeight, parsePositiveInt),
     persistentWorkspacesKey: Parser(\.persistentWorkspaces, parsePersistentWorkspaces),
     "exec-on-workspace-change": Parser(\.execOnWorkspaceChange, parseArrayOfStrings),
     "exec": Parser(\.execConfig, parseExecConfig),
@@ -341,6 +343,10 @@ func parseInt(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigPa
     raw.asIntOrNil.toResult(expectedActualTypeDiagnostic(expected: .int, actual: raw.tomlType, backtrace))
 }
 
+func parsePositiveInt(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<Int> {
+    parseInt(raw, backtrace).filter(.init(backtrace, "Expected a positive integer")) { $0 > 0 }
+}
+
 func parseString(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<String> {
     raw.asStringOrNil.toResult(expectedActualTypeDiagnostic(expected: .string, actual: raw.tomlType, backtrace))
 }
@@ -463,6 +469,24 @@ private func parseSingleWindowWidthRules(_ raw: OrderedJson, _ backtrace: Config
         }
         return .success(result.sorted { $0.minMonitorWidth < $1.minMonitorWidth })
     }
+}
+
+private func parseBorderRadiusByApp(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<[String: Int]> {
+    guard let table = raw.asDictOrNil else {
+        return .failure(expectedActualTypeDiagnostic(expected: .table, actual: raw.tomlType, backtrace))
+    }
+    var result: [String: Int] = [:]
+    for (appId, radius) in table {
+        let location = backtrace + .key(appId)
+        guard !appId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .failure(.init(location, "Expected a non-empty app bundle ID"))
+        }
+        guard let value = radius.asIntOrNil, value >= 0 else {
+            return .failure(.init(location, "Expected a non-negative integer"))
+        }
+        result[appId] = value
+    }
+    return .success(result)
 }
 
 private func parseApplyAspectOrientation(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<ApplyAspectOrientation> {

@@ -50,8 +50,10 @@ struct Config: ConvenienceMutable {
     var focusedWindowBorderWidth: Int = 4
     var focusedWindowBorderOpacity: Int = 100
     var focusedWindowBorderRadius: Int = 10
+    var focusedWindowBorderRadiusByApp: [String: Int] = [:]
     var focusedWindowBorderInset: Int = 0
     var accordionPadding: Int = 30
+    var minimumWindowHeight: Int = 200
     var enableNormalizationOppositeOrientationForNestedContainers: Bool = true
     var persistentWorkspaces: OrderedSet<String> = []
     var execOnWorkspaceChange: [String] = [] // todo deprecate
@@ -73,6 +75,12 @@ struct Config: ConvenienceMutable {
     var modes: [String: Mode] = [:]
     var onWindowDetected: [WindowDetectedCallback] = []
     var onModeChanged: Shell<any Command> = .empty
+}
+
+extension Config {
+    func borderCornerRadius(appId: String?) -> Int {
+        appId.flatMap { focusedWindowBorderRadiusByApp[$0] } ?? focusedWindowBorderRadius
+    }
 }
 
 struct AdaptiveLayoutConfig: ConvenienceMutable, Equatable, Sendable {

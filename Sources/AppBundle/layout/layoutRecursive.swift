@@ -210,9 +210,7 @@ extension TilingContainer {
     /// makes its siblings jump, and the space is handed back a moment later.
     @MainActor
     private func layoutChildren(adaptiveLayoutEnabled: Bool) -> [TreeNode] {
-        adaptiveLayoutEnabled
-            ? adaptiveParticipatingChildren(self)
-            : children.filter { ($0 as? Window)?.isAwaitingOnWindowDetected != true }
+        adaptiveLayoutEnabled ? adaptiveParticipatingChildren(self) : tiledParticipatingChildren(self)
     }
 
     @MainActor
@@ -221,7 +219,7 @@ extension TilingContainer {
         var virtualPoint = virtual.topLeftCorner
         let children = layoutChildren(adaptiveLayoutEnabled: context.adaptiveLayoutEnabled)
         let configuredGap = context.resolvedGaps.inner.get(orientation).toDouble()
-        let rawGap = context.adaptiveLayoutEnabled && orientation == .h
+        var rawGap = context.adaptiveLayoutEnabled && orientation == .h
             ? adaptiveEffectiveHorizontalGap(configuredGap: configuredGap, width: width, childCount: children.count)
             : configuredGap
 
@@ -243,6 +241,14 @@ extension TilingContainer {
                 ),
             )
         }
+        if orientation == .v {
+            rawGap = enforceVerticalMinimums(
+                children: children,
+                height: height,
+                configuredGap: configuredGap,
+                minimumWindowHeight: CGFloat(config.minimumWindowHeight),
+            )
+        }
 
         guard let delta = ((orientation == .h ? width : height) - CGFloat(children.sumOfDouble { $0.getWeight(orientation) }))
             .div(children.count) else { return }
@@ -258,10 +264,11 @@ extension TilingContainer {
             let gap = rawGap - (i == 0 ? rawGap / 2 : 0) - (i == lastIndex ? rawGap / 2 : 0)
             let rawChildWidth = orientation == .h ? child.hWeight - gap : width
             let childWidth = context.adaptiveLayoutEnabled ? max(1, rawChildWidth) : rawChildWidth
+            let childHeight = orientation == .v ? max(0.000_001, child.vWeight - gap) : height
             try await child.layoutRecursive(
                 i == 0 ? point : point.addingOffset(orientation, rawGap / 2),
                 width: childWidth,
-                height: orientation == .v ? child.vWeight - gap : height,
+                height: childHeight,
                 virtual: Rect(
                     topLeftX: virtualPoint.x,
                     topLeftY: virtualPoint.y,
@@ -289,13 +296,23 @@ extension TilingContainer {
         let mruIndex: Int = children.firstIndex { $0 === mostRecentChild } ?? 0
         for (index, child) in children.enumerated() {
             let padding = CGFloat(config.accordionPadding)
-            let (lPadding, rPadding): (CGFloat, CGFloat) = switch index {
+            var (lPadding, rPadding): (CGFloat, CGFloat) = switch index {
                 case 0 where children.count == 1: (0, 0)
                 case 0:                           (0, padding)
                 case children.indices.last:       (padding, 0)
                 case mruIndex - 1:                (0, 2 * padding)
                 case mruIndex + 1:                (2 * padding, 0)
                 default:                          (padding, padding)
+            }
+            if orientation == .v {
+                let configuredGap = CGFloat(context.resolvedGaps.inner.vertical)
+                (lPadding, rPadding) = effectiveAccordionVerticalPadding(
+                    self,
+                    children: children,
+                    index: index,
+                    height: height,
+                    verticalGap: configuredGap,
+                )
             }
             switch orientation {
                 case .h:
@@ -310,7 +327,7 @@ extension TilingContainer {
                     try await child.layoutRecursive(
                         point + CGPoint(x: 0, y: lPadding),
                         width: width,
-                        height: height - lPadding - rPadding,
+                        height: max(0.000_001, height - lPadding - rPadding),
                         virtual: virtual,
                         context,
                     )

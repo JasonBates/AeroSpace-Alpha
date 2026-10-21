@@ -8,7 +8,13 @@ struct BalanceSizesCommand: Command {
 
     func run(_ env: CmdEnv, _ io: CmdIo) -> BinaryExitCode {
         guard let target = args.resolveTargetOrReportError(env, io) else { return .fail }
+        cancelResizeWithMouseGesture(for: target.workspace)
         balance(target.workspace.rootTilingContainer)
+        let workspaceWindows = target.workspace.rootTilingContainer.allLeafWindowsRecursive + target.workspace.floatingWindows
+        for window in workspaceWindows {
+            window.singleWindowWidthAdjustment = 0
+            window.focusModeHeightAdjustment = 0
+        }
         return .succ
     }
 }

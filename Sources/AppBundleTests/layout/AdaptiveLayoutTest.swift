@@ -787,6 +787,178 @@ final class AdaptiveLayoutTest: XCTestCase {
         assertRect(try await second.getAxRect(.nonCancellable), x: 326.4, y: 639.5, width: 1267.2, height: 439.5)
     }
 
+    func testVerticalMinimumAppliesToTwoThreeAndFourStacksOnAdaptiveAndNormalDisplays() async throws {
+        for adaptiveEnabled in [false, true] {
+            for count in 2 ... 4 {
+                setUpWorkspacesForTests()
+                config.adaptiveLayout.enabled = .constant(adaptiveEnabled)
+                config.gaps.inner.vertical = .constant(20)
+                let workspace = focus.workspace
+                workspace.rootTilingContainer.changeOrientation(.v)
+                let windows = (1 ... count).map {
+                    TestWindow.new(id: UInt32($0), parent: workspace.rootTilingContainer)
+                }
+
+                try await workspace.layoutWorkspace()
+
+                let laidOut = try await frames(of: windows).compactMap { $0 }
+                XCTAssertEqual(laidOut.count, count)
+                XCTAssertTrue(laidOut.allSatisfy { $0.height >= 200 })
+                for pair in zip(laidOut, laidOut.dropFirst()) {
+                    XCTAssertEqual(pair.1.minY - pair.0.maxY, 20, accuracy: 0.001)
+                }
+            }
+        }
+    }
+
+    func testVerticalMinimumReducesInnerGapBeforeWindowFloor() async throws {
+        let monitor = AdaptiveTestMonitor(
+            name: "Short",
+            x: 0,
+            isMain: true,
+            monitorWidth: 800,
+            monitorHeight: 411,
+        )
+        monitorInfosForTests = [monitor]
+        let workspace = focus.workspace
+        assertTrue(monitor.setActiveWorkspace(workspace))
+        config.gaps.inner.vertical = .constant(30)
+        workspace.rootTilingContainer.changeOrientation(.v)
+        let first = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
+        let second = TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
+
+        try await workspace.layoutWorkspace()
+
+        assertRect(try await first.getAxRect(.nonCancellable), x: 136, y: 0, width: 528, height: 200)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 136, y: 210, width: 528, height: 200)
+    }
+
+    func testImpossibleVerticalMinimumsStayPositiveAndInsideBounds() async throws {
+        let monitor = AdaptiveTestMonitor(
+            name: "Short",
+            x: 0,
+            isMain: true,
+            monitorWidth: 800,
+            monitorHeight: 411,
+        )
+        monitorInfosForTests = [monitor]
+        let workspace = focus.workspace
+        assertTrue(monitor.setActiveWorkspace(workspace))
+        config.gaps.inner.vertical = .constant(30)
+        workspace.rootTilingContainer.changeOrientation(.v)
+        let windows = (1 ... 4).map {
+            TestWindow.new(id: UInt32($0), parent: workspace.rootTilingContainer)
+        }
+
+        try await workspace.layoutWorkspace()
+
+        let laidOut = try await frames(of: windows).compactMap { $0 }
+        XCTAssertTrue(laidOut.allSatisfy { $0.height > 0 })
+        XCTAssertGreaterThanOrEqual(laidOut.first.orDie().minY, 0)
+        XCTAssertLessThanOrEqual(laidOut.last.orDie().maxY, 410.001)
+        for pair in zip(laidOut, laidOut.dropFirst()) {
+            XCTAssertLessThanOrEqual(pair.0.maxY, pair.1.minY + 0.001)
+        }
+    }
+
+    func testMouseVerticalShrinkClampsAtFloorFromBothDividerEdges() async throws {
+        for lowerEdge in [true, false] {
+            setUpWorkspacesForTests()
+            config.adaptiveLayout.enabled = .constant(true)
+            let workspace = focus.workspace
+            workspace.rootTilingContainer.changeOrientation(.v)
+            TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
+            let middle = TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
+            TestWindow.new(id: 3, parent: workspace.rootTilingContainer)
+            try await workspace.layoutWorkspace()
+            let baseline = try await middle.getAxRect(.nonCancellable).orDie()
+            let observed = lowerEdge
+                ? Rect(topLeftX: baseline.minX, topLeftY: baseline.minY, width: baseline.width, height: 20)
+                : Rect(topLeftX: baseline.minX, topLeftY: baseline.maxY - 20, width: baseline.width, height: 20)
+            middle.setAxFrame(observed.topLeftCorner, observed.size)
+
+            try await resizeWithMouse(middle)
+
+            let clamped = try await middle.getAxRect(.nonCancellable).orDie()
+            XCTAssertEqual(clamped.height, 200, accuracy: 0.001)
+            if lowerEdge {
+                XCTAssertEqual(clamped.minY, baseline.minY, accuracy: 0.001)
+            } else {
+                XCTAssertEqual(clamped.maxY, baseline.maxY, accuracy: 0.001)
+            }
+            try await resetManipulatedWithMouseIfPossible()
+        }
+    }
+
+    func testMouseVerticalGrowthStopsWhenDonorReachesFloor() async throws {
+        let workspace = focus.workspace
+        workspace.rootTilingContainer.changeOrientation(.v)
+        let top = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
+        let bottom = TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
+        try await workspace.layoutWorkspace()
+        top.vWeight = 829
+        bottom.vWeight = 250
+        try await workspace.layoutWorkspace()
+        let baseline = try await top.getAxRect(.nonCancellable).orDie()
+        top.setAxFrame(nil, CGSize(width: baseline.width, height: baseline.height + 100))
+
+        try await resizeWithMouse(top)
+
+        XCTAssertEqual(top.vWeight, 879, accuracy: 0.001)
+        XCTAssertEqual(bottom.vWeight, 200, accuracy: 0.001)
+        let clamped = try await top.getAxRect(.nonCancellable).orDie()
+        XCTAssertEqual(clamped.minY, baseline.minY, accuracy: 0.001)
+        XCTAssertEqual(clamped.height, baseline.height + 50, accuracy: 0.001)
+        try await resetManipulatedWithMouseIfPossible()
+    }
+
+    func testMouseVerticalGestureReversalUsesImmutableBaselineAcrossRelayout() async throws {
+        let workspace = focus.workspace
+        workspace.rootTilingContainer.changeOrientation(.v)
+        let top = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
+        let bottom = TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
+        try await workspace.layoutWorkspace()
+        let baseline = try await top.getAxRect(.nonCancellable).orDie()
+        top.setAxFrame(nil, CGSize(width: baseline.width, height: baseline.height + 50))
+        try await resizeWithMouse(top)
+        XCTAssertEqual(top.vWeight, 589.5, accuracy: 0.001)
+        XCTAssertEqual(bottom.vWeight, 489.5, accuracy: 0.001)
+        try await workspace.layoutWorkspace()
+
+        top.setAxFrame(baseline.topLeftCorner, baseline.size)
+        try await resizeWithMouse(top)
+
+        XCTAssertEqual(top.vWeight, 539.5, accuracy: 0.001)
+        XCTAssertEqual(bottom.vWeight, 539.5, accuracy: 0.001)
+        try await resetManipulatedWithMouseIfPossible()
+    }
+
+    func testBalanceSizesDuringMouseGestureRefusesQueuedEventThenAllowsNewGesture() async throws {
+        let workspace = focus.workspace
+        workspace.rootTilingContainer.changeOrientation(.v)
+        let top = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
+        let bottom = TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
+        assertTrue(top.focusWindow())
+        try await workspace.layoutWorkspace()
+        let baseline = try await top.getAxRect(.nonCancellable).orDie()
+        top.setAxFrame(nil, CGSize(width: baseline.width, height: baseline.height + 50))
+        try await resizeWithMouse(top)
+
+        _ = await parseCommand("balance-sizes").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        top.setAxFrame(nil, CGSize(width: baseline.width, height: baseline.height + 50))
+        try await resizeWithMouse(top) // Queued notification from the cancelled gesture.
+        XCTAssertEqual(top.vWeight, bottom.vWeight, accuracy: 0.001)
+        try await resetManipulatedWithMouseIfPossible()
+
+        try await workspace.layoutWorkspace()
+        let resetFrame = try await top.getAxRect(.nonCancellable).orDie()
+        top.setAxFrame(nil, CGSize(width: resetFrame.width, height: resetFrame.height + 50))
+        try await resizeWithMouse(top)
+        XCTAssertGreaterThan(top.vWeight, bottom.vWeight)
+        try await resetManipulatedWithMouseIfPossible()
+    }
+
     func testMouseWidthResizeSurvivesAdaptiveAreaChange() async throws {
         let workspace = focus.workspace
         let root = workspace.rootTilingContainer
@@ -1046,13 +1218,13 @@ final class AdaptiveLayoutTest: XCTestCase {
         first.rejectAxFrameChangesForTest = true
         let callsAfterVerticalChange = first.setAxFrameCallCountForTest
         try await resizeWithMouse(first)
-        XCTAssertEqual(first.setAxFrameCallCountForTest, callsAfterVerticalChange)
+        XCTAssertEqual(first.setAxFrameCallCountForTest, callsAfterVerticalChange + 1)
 
         first.rejectAxFrameChangesForTest = false
         first.setAxFrame(nil, CGSize(width: baseline.width + 9000, height: baseline.height))
         try await resizeWithMouse(first)
         let callsAfterSuccessfulClamp = first.setAxFrameCallCountForTest
-        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 34, width: 1213.44, height: 971)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 1213.44, height: 971)
 
         try await resizeWithMouse(first)
         first.setAxFrame(nil, CGSize(width: baseline.width + 10000, height: baseline.height))

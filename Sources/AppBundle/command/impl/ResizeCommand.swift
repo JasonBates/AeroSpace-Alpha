@@ -97,6 +97,25 @@ struct ResizeCommand: Command {
         guard let orientation else { return .fail }
         guard let node else { return .fail }
 
+        if orientation == .v, let workspace = node.nodeWorkspace {
+            guard let currentHeight = tiledPhysicalHeight(
+                node: node,
+                parent: parent,
+                workspace: workspace,
+            ) else { return .fail }
+            let requestedHeight: CGFloat = switch args.units.val {
+                case .set(let unit): CGFloat(unit)
+                case .add(let unit): currentHeight + CGFloat(unit)
+                case .subtract(let unit): currentHeight - CGFloat(unit)
+            }
+            return resizeTiledVertically(
+                node: node,
+                parent: parent,
+                requestedPhysicalHeight: requestedHeight,
+                workspace: workspace,
+            ) == nil ? .fail : .succ
+        }
+
         if orientation == .h,
            let workspace = node.nodeWorkspace,
            config.adaptiveLayout.enabled.getValue(for: workspace.workspaceMonitor),

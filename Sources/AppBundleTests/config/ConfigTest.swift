@@ -636,6 +636,23 @@ final class ConfigTest: XCTestCase {
         )
     }
 
+    func testMinimumWindowHeightDefaultParsingAndValidation() {
+        assertEquals(parseConfig("").config.minimumWindowHeight, 200)
+
+        let configured = parseConfig("minimum-window-height = 275")
+        assertEquals(configured.errors, [])
+        assertEquals(configured.config.minimumWindowHeight, 275)
+
+        assertEquals(
+            parseConfig("minimum-window-height = 0").strErrors,
+            ["[ERROR] minimum-window-height: Expected a positive integer"],
+        )
+        assertEquals(
+            parseConfig("minimum-window-height = -10").strErrors,
+            ["[ERROR] minimum-window-height: Expected a positive integer"],
+        )
+    }
+
     func testParseHiddenWindowsOcclusionCover() {
         assertEquals(parseConfig("").config.hiddenWindowsOcclusionCover, true)
         let result = parseConfig("hidden-windows-occlusion-cover = false")
@@ -666,6 +683,25 @@ final class ConfigTest: XCTestCase {
         assertEquals(result.config.focusedWindowBorderRadius, 12)
         assertEquals(result.config.focusedWindowBorderInset, 2)
         assertEquals(parseConfig("focused-window-border = 'yes'").strErrors, ["[ERROR] focused-window-border: Expected type is 'Bool'. But actual type is 'String'"])
+    }
+
+    func testAppSpecificBorderRadiusUsesGlobalFallback() {
+        let result = parseConfig(
+            """
+            focused-window-border-radius = 10
+            focused-window-border-radius-by-app = { 'com.apple.mail' = 24, 'example.square' = 0 }
+            """,
+        )
+        assertEquals(result.errors, [])
+        assertEquals(result.config.borderCornerRadius(appId: "com.apple.mail"), 24)
+        assertEquals(result.config.borderCornerRadius(appId: "example.square"), 0)
+        assertEquals(result.config.borderCornerRadius(appId: "com.example.terminal"), 10)
+        assertEquals(result.config.borderCornerRadius(appId: nil), 10)
+        assertEquals(parseConfig("").config.focusedWindowBorderRadiusByApp, [:])
+
+        for invalid in ["[]", "12", "{ 'com.apple.mail' = -1 }", "{ 'com.apple.mail' = true }", "{ 'com.apple.mail' = '24' }", "{ '' = 24 }"] {
+            assertTrue(!parseConfig("focused-window-border-radius-by-app = \(invalid)").errors.isEmpty)
+        }
     }
 
     func testParseBorderColorHex() { // upstream PR #2107
