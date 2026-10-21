@@ -30,6 +30,7 @@ enabled = [{ monitor."DELL U3225QE" = true }, false]
 one-column-width-percent = 33
 two-column-width-percent = 66
 single-row-height-percent = 90
+minimum-window-width-percent = 60
 ```
 
 The last boolean is the fallback for monitors that do not match. Each
@@ -41,6 +42,35 @@ at that width as more rows are added. One structural row occupies 90% of the
 usable height; two or more occupy all of it.
 The result is centred horizontally and vertically. The usable rectangle already
 has outer gaps removed, and layout applies the configured inner gaps inside it.
+
+Horizontal resize keeps each participating window readable before widening the
+workspace. `minimum-window-width-percent` is the minimum physical content width
+as a percentage of the normal one-column width; it is not a percentage of the
+whole monitor and it does not infer an application's native minimum. At the
+default settings on a 1920-point usable display, the one-column width is 633.6
+points and the resize minimum is 380.16 points. A target first takes space
+equally from neighbours that remain above that minimum. Further growth expands
+the centred workspace up to the usable display width. Reversing the resize
+contracts that expansion before giving space back to neighbours.
+Making an uneven pair more balanced can also reduce its overall width while
+honouring the requested change; another row that still needs the extra width
+keeps the workspace expanded.
+
+The minimum is applied recursively: horizontal children add their content
+minimums and inner gaps, while vertical children use the widest requirement.
+An accordion acts as one overlapping group and includes its horizontal reveal
+padding. If all recursive minimums cannot fit on a narrow display, the display
+edge wins and every child receives a positive proportional share. Existing
+custom split ratios may therefore widen a workspace when this policy is first
+enabled.
+
+Keyboard resize keeps the workspace centred on every step. Mouse resize keeps
+the window edge opposite the pointer fixed while the workspace can move. At a
+display edge it shifts the remaining donor reduction to the side that preserves
+that fixed edge, and clamps the actively dragged frame when the requested size
+exceeds the feasible minimum or maximum. Releasing the pointer recentres the
+derived workspace. No expanded-width flag is saved; the current tree, gaps and
+split weights determine the width on each layout pass.
 
 The structure is calculated recursively from the tiling tree. A window counts
 as one column by one row. Horizontal tiles add columns and take the largest row

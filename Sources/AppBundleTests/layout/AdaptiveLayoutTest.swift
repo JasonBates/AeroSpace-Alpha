@@ -227,6 +227,82 @@ final class AdaptiveLayoutTest: XCTestCase {
         assertEquals(top.children.map(\.hWeight), [1344, 576])
     }
 
+    func testExpandedGappedPairSurvivesAddingSpanningBottomAndRepeatedLayout() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        root.changeOrientation(.v)
+        config.gaps.inner.horizontal = .constant(20)
+        var topLeft: Window!
+        var topRight: Window!
+        TilingContainer.newHTiles(parent: root, adaptiveWeight: 1).apply {
+            topLeft = TestWindow.new(id: 1, parent: $0)
+            topRight = TestWindow.new(id: 2, parent: $0)
+        }
+        try await workspace.layoutWorkspace()
+        assertTrue(topLeft.focusWindow())
+
+        _ = await parseCommand("resize width +500").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 198.12, y: 54, width: 1523.76, height: 972)
+        let expandedTopLeft = try await topLeft.getAxRect(.nonCancellable).orDie()
+        let expandedTopRight = try await topRight.getAxRect(.nonCancellable).orDie()
+        XCTAssertEqual(expandedTopLeft.width, 1123.6, accuracy: 0.001)
+        XCTAssertEqual(expandedTopRight.width, 380.16, accuracy: 0.001)
+
+        let bottom = TestWindow.new(id: 3, parent: root, adaptiveWeight: WEIGHT_AUTO)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 198.12, y: 0, width: 1523.76, height: 1080)
+        assertRect(try await topLeft.getAxRect(.nonCancellable), x: 198.12, y: 0, width: 1123.6, height: 539.5)
+        assertRect(try await topRight.getAxRect(.nonCancellable), x: 1341.72, y: 0, width: 380.16, height: 539.5)
+        assertRect(try await bottom.getAxRect(.nonCancellable), x: 198.12, y: 539.5, width: 1523.76, height: 539.5)
+        let firstFrames = try await frames(of: [topLeft, topRight, bottom])
+        let firstWeights = root.children.map(\.vWeight)
+
+        try await workspace.layoutWorkspace()
+
+        assertEquals(try await frames(of: [topLeft, topRight, bottom]), firstFrames)
+        assertEquals(root.children.map(\.vWeight), firstWeights)
+    }
+
+    func testAddingThirdColumnReconcilesExpandedPairWithoutViolatingMinimums() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        let second = TestWindow.new(id: 2, parent: root)
+        try await workspace.layoutWorkspace()
+        assertTrue(first.focusWindow())
+        _ = await parseCommand("resize width +500").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+
+        let third = TestWindow.new(id: 3, parent: root, adaptiveWeight: WEIGHT_AUTO)
+        try await workspace.layoutWorkspace()
+
+        let minimum = adaptiveMinimumWindowPhysicalWidth(availableWidth: 1920, config: config.adaptiveLayout)
+        let framesAfterAdd = try await frames(of: [first, second, third]).compactMap { $0 }
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 0, y: 54, width: 1920, height: 972)
+        XCTAssertTrue(framesAfterAdd.allSatisfy { $0.width >= minimum - 0.001 })
+        XCTAssertGreaterThan(framesAfterAdd[0].width, 633.6)
+        let weightsAfterAdd = root.children.map(\.hWeight)
+
+        try await workspace.layoutWorkspace()
+        for (actual, expected) in zip(root.children.map(\.hWeight), weightsAfterAdd) {
+            XCTAssertEqual(actual, expected, accuracy: 0.000_001)
+        }
+        let framesAfterSecondLayout = try await frames(of: [first, second, third]).compactMap { $0 }
+        for (actual, expected) in zip(framesAfterSecondLayout, framesAfterAdd) {
+            XCTAssertEqual(actual.minX, expected.minX, accuracy: 0.000_001)
+            XCTAssertEqual(actual.width, expected.width, accuracy: 0.000_001)
+        }
+
+        third.unbindFromParent()
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 326.4, y: 54, width: 1267.2, height: 972)
+        let firstAfterClose = try await first.getAxRect(.nonCancellable).orDie()
+        let secondAfterClose = try await second.getAxRect(.nonCancellable).orDie()
+        XCTAssertGreaterThanOrEqual(firstAfterClose.width, minimum - 0.001)
+        XCTAssertGreaterThanOrEqual(secondAfterClose.width, minimum - 0.001)
+    }
+
     func testEnablingAndDisablingPreservesExistingSplit() async throws {
         let workspace = focus.workspace
         let root = workspace.rootTilingContainer
@@ -266,6 +342,237 @@ final class AdaptiveLayoutTest: XCTestCase {
         assertRect(workspace.lastAppliedLayoutVirtualRect, x: 192, y: 54, width: 1536, height: 972)
     }
 
+    func testKeyboardResizeShrinksDonorToMinimumThenExpandsAndContractsWorkspace() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        let second = TestWindow.new(id: 2, parent: root)
+        assertTrue(first.focusWindow())
+        try await workspace.layoutWorkspace()
+
+        _ = await parseCommand("resize width +200").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 326.4, y: 54, width: 1267.2, height: 972)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 833.6, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 1160, y: 54, width: 433.6, height: 971)
+
+        XCTAssertNotNil(resizeAdaptiveHorizontally(
+            node: first,
+            parent: root,
+            requestedPhysicalWidth: 887.04,
+            workspace: workspace,
+        ))
+        try await workspace.layoutWorkspace()
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 887.04, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 1213.44, y: 54, width: 380.16, height: 971)
+
+        _ = await parseCommand("resize width +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 276.4, y: 54, width: 1367.2, height: 972)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 276.4, y: 54, width: 987.04, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 1263.44, y: 54, width: 380.16, height: 971)
+        let expandedWeights = root.children.map(\.hWeight)
+        try await workspace.layoutWorkspace()
+        assertEquals(root.children.map(\.hWeight), expandedWeights)
+
+        _ = await parseCommand("resize width -100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 326.4, y: 54, width: 1267.2, height: 972)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 887.04, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 1213.44, y: 54, width: 380.16, height: 971)
+
+        _ = await parseCommand("resize width -100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 787.04, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 1113.44, y: 54, width: 480.16, height: 971)
+    }
+
+    func testKeyboardResizeClampsAtScreenEdge() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        let second = TestWindow.new(id: 2, parent: root)
+        assertTrue(first.focusWindow())
+        try await workspace.layoutWorkspace()
+
+        _ = await parseCommand("resize width +99999").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 0, y: 54, width: 1920, height: 972)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 0, y: 54, width: 1539.84, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 1539.84, y: 54, width: 380.16, height: 971)
+    }
+
+    func testChainedAdaptiveResizeCommandsUseLiveIntendedWidthBeforeLayout() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        let second = TestWindow.new(id: 2, parent: root)
+        assertTrue(first.focusWindow())
+        try await workspace.layoutWorkspace()
+
+        _ = await parseCommand("resize width +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        _ = await parseCommand("resize width +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 833.6, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 1160, y: 54, width: 433.6, height: 971)
+
+        _ = await parseCommand("resize smart 800").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        _ = await parseCommand("resize width -50").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 750, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 1076.4, y: 54, width: 517.2, height: 971)
+    }
+
+    func testResizeInOneRowHonoursWidthRequiredByAnotherRow() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        root.changeOrientation(.v)
+        var topLeft: Window!
+        var topRight: Window!
+        var bottomLeft: Window!
+        var bottomRight: Window!
+        TilingContainer.newHTiles(parent: root, adaptiveWeight: 1).apply {
+            topLeft = TestWindow.new(id: 1, parent: $0)
+            topRight = TestWindow.new(id: 2, parent: $0)
+        }
+        TilingContainer.newHTiles(parent: root, adaptiveWeight: WEIGHT_AUTO).apply {
+            bottomLeft = TestWindow.new(id: 3, parent: $0)
+            bottomRight = TestWindow.new(id: 4, parent: $0)
+        }
+        try await workspace.layoutWorkspace()
+        topLeft.hWeight = 1119.84
+        topRight.hWeight = 380.16
+        bottomLeft.hWeight = 380.16
+        bottomRight.hWeight = 1119.84
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 210, y: 0, width: 1500, height: 1080)
+        assertTrue(topLeft.focusWindow())
+
+        _ = await parseCommand("resize width -100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 210, y: 0, width: 1500, height: 1080)
+        assertRect(try await topLeft.getAxRect(.nonCancellable), x: 210, y: 0, width: 1019.84, height: 539.5)
+        assertRect(try await topRight.getAxRect(.nonCancellable), x: 1229.84, y: 0, width: 480.16, height: 539.5)
+        assertRect(try await bottomRight.getAxRect(.nonCancellable), x: 590.16, y: 539.5, width: 1119.84, height: 539.5)
+    }
+
+    func testGrowingSmallSideOfExpandedPairContractsToMinimumFeasibleWorkspace() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        let second = TestWindow.new(id: 2, parent: root)
+        try await workspace.layoutWorkspace()
+        first.hWeight = 1119.84
+        second.hWeight = 380.16
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 210, y: 54, width: 1500, height: 972)
+        assertTrue(second.focusWindow())
+
+        _ = await parseCommand("resize width +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 326.4, y: 54, width: 1267.2, height: 972)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 787.04, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 1113.44, y: 54, width: 480.16, height: 971)
+    }
+
+    func testThreeColumnsRedistributeEquallyAndSaturateDonors() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        let second = TestWindow.new(id: 2, parent: root)
+        let third = TestWindow.new(id: 3, parent: root)
+        try await workspace.layoutWorkspace()
+        first.hWeight = 400
+        second.hWeight = 390
+        third.hWeight = 1130
+        try await workspace.layoutWorkspace()
+        assertTrue(first.focusWindow())
+
+        _ = await parseCommand("resize width +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+
+        assertRect(try await first.getAxRect(.nonCancellable), x: 0, y: 54, width: 500, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 500, y: 54, width: 380.16, height: 971)
+        assertRect(try await third.getAxRect(.nonCancellable), x: 880.16, y: 54, width: 1039.84, height: 971)
+
+        assertTrue(second.focusWindow())
+        _ = await parseCommand("resize width +99999").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        let firstFrame = try await first.getAxRect(.nonCancellable)
+        let thirdFrame = try await third.getAxRect(.nonCancellable)
+        XCTAssertGreaterThan(firstFrame?.width ?? 0, 0)
+        XCTAssertGreaterThan(thirdFrame?.width ?? 0, 0)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 380.16, y: 54, width: 1159.68, height: 971)
+    }
+
+    func testRepeatedResizeOnRepresentativeNestedTreeStaysFiniteAndReportsTiming() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        root.changeOrientation(.v)
+        var target: Window!
+        var targetParent: TilingContainer!
+        for row in 0 ..< 4 {
+            TilingContainer.newHTiles(parent: root, adaptiveWeight: row == 0 ? 1 : WEIGHT_AUTO).apply { container in
+                for column in 0 ..< 4 {
+                    let window = TestWindow.new(
+                        id: UInt32(row * 4 + column + 1),
+                        parent: container,
+                        adaptiveWeight: column == 0 ? 1 : WEIGHT_AUTO,
+                    )
+                    if row == 0, column == 0 {
+                        target = window
+                        targetParent = container
+                    }
+                }
+            }
+        }
+        try await workspace.layoutWorkspace()
+
+        let iterations = 1000
+        let start = ContinuousClock.now
+        var allResizesSucceeded = true
+        for index in 0 ..< iterations {
+            allResizesSucceeded = resizeAdaptiveHorizontally(
+                node: target,
+                parent: targetParent,
+                requestedPhysicalWidth: index.isMultiple(of: 2) ? 500 : 700,
+                workspace: workspace,
+            ) != nil && allResizesSucceeded
+        }
+        let elapsed = start.duration(to: .now)
+        print("adaptive nested resize benchmark: loops=\(iterations) nodes=21 elapsed=\(elapsed)")
+        XCTAssertTrue(allResizesSucceeded)
+
+        try await workspace.layoutWorkspace()
+        XCTAssertTrue(root.allLeafWindowsRecursive.allSatisfy {
+            $0.lastAppliedLayoutPhysicalRect?.width.isFinite == true &&
+                ($0.lastAppliedLayoutPhysicalRect?.width ?? 0) > 0
+        })
+    }
+
+    func testBalanceSizesContractsExpandedWorkspaceToNormalBounds() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        let second = TestWindow.new(id: 2, parent: root)
+        assertTrue(first.focusWindow())
+        try await workspace.layoutWorkspace()
+        _ = await parseCommand("resize width +500").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        XCTAssertGreaterThan(workspace.lastAppliedLayoutVirtualRect?.width ?? 0, 1267.2)
+
+        _ = await parseCommand("balance-sizes").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 326.4, y: 54, width: 1267.2, height: 972)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 633.6, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 960, y: 54, width: 633.6, height: 971)
+    }
+
     func testChangedTopologyShrinkCannotCollapsePositiveChild() async throws {
         let workspace = focus.workspace
         let root = workspace.rootTilingContainer
@@ -282,8 +589,8 @@ final class AdaptiveLayoutTest: XCTestCase {
         try await workspace.layoutWorkspace()
 
         XCTAssertGreaterThan(second.hWeight, 0)
-        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 1133.810526, height: 971)
-        assertRect(try await second.getAxRect(.nonCancellable), x: 1460.210526, y: 54, width: 133.389474, height: 971)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 887.04, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 1213.44, y: 54, width: 380.16, height: 971)
     }
 
     func testAdaptiveBoundsKeepOuterAndInnerGapsOnOffsetMonitor() async throws {
@@ -344,10 +651,10 @@ final class AdaptiveLayoutTest: XCTestCase {
         config.adaptiveLayout.enabled = .constant(true)
         try await workspace.layoutWorkspace()
         let adaptiveWeights = root.children.map(\.hWeight)
-        XCTAssertEqual(adaptiveWeights[0], 1253.9178947368423, accuracy: 0.001)
-        XCTAssertEqual(adaptiveWeights[1], 13.282105263157895, accuracy: 0.001)
-        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 1243.9178947368423, height: 971)
-        assertRect(try await second.getAxRect(.nonCancellable), x: 1590.3178947368424, y: 54, width: 3.282105263157895, height: 971)
+        XCTAssertEqual(adaptiveWeights[0], 877.04, accuracy: 0.001)
+        XCTAssertEqual(adaptiveWeights[1], 390.16, accuracy: 0.001)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 867.04, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 1213.44, y: 54, width: 380.16, height: 971)
 
         config.adaptiveLayout.enabled = .constant(false)
         try await workspace.layoutWorkspace()
@@ -368,15 +675,15 @@ final class AdaptiveLayoutTest: XCTestCase {
         let first = TestWindow.new(id: 1, parent: root)
         let second = TestWindow.new(id: 2, parent: root)
         try await workspace.layoutWorkspace()
-        first.hWeight = 1344
-        second.hWeight = 576
+        first.hWeight = 1280
+        second.hWeight = 640
         try await workspace.layoutWorkspace()
 
         config.adaptiveLayout.enabled = .constant(true)
         try await workspace.layoutWorkspace()
 
-        XCTAssertEqual(first.hWeight, 887.04, accuracy: 0.001)
-        XCTAssertEqual(second.hWeight, 380.16, accuracy: 0.001)
+        XCTAssertEqual(first.hWeight, 844.8, accuracy: 0.001)
+        XCTAssertEqual(second.hWeight, 422.4, accuracy: 0.001)
     }
 
     func testImpossibleInnerGapStillProducesFiniteWeightsAndFrames() async throws {
@@ -396,6 +703,54 @@ final class AdaptiveLayoutTest: XCTestCase {
         let secondFrame = try await second.getAxRect(.nonCancellable)
         XCTAssertTrue(firstFrame?.width.isFinite == true)
         XCTAssertTrue(secondFrame?.width.isFinite == true)
+    }
+
+    func testImpossibleMinimumsOnNarrowMonitorDegradeToPositiveFiniteFramesInsideScreen() async throws {
+        let narrow = AdaptiveTestMonitor(
+            name: "Narrow",
+            x: 400,
+            isMain: true,
+            monitorWidth: 1200,
+        )
+        monitorInfosForTests = [narrow]
+        let workspace = focus.workspace
+        assertTrue(narrow.setActiveWorkspace(workspace))
+        let windows = (1 ... 6).map { TestWindow.new(id: UInt32($0), parent: workspace.rootTilingContainer) }
+
+        try await workspace.layoutWorkspace()
+
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 400, y: 54, width: 1200, height: 972)
+        for frame in try await frames(of: windows).compactMap({ $0 }) {
+            XCTAssertTrue(frame.width.isFinite)
+            XCTAssertGreaterThan(frame.width, 0)
+            XCTAssertGreaterThanOrEqual(frame.minX, narrow.visibleRect.minX)
+            XCTAssertLessThanOrEqual(frame.maxX, narrow.visibleRect.maxX + 0.001)
+        }
+    }
+
+    func testHorizontalAccordionIsAnOpaqueRecursiveMinimumDuringResize() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        let accordion = TilingContainer(
+            parent: root,
+            adaptiveWeight: 1,
+            .h,
+            .accordion,
+            index: INDEX_BIND_LAST,
+        )
+        let accordionWindows = (1 ... 3).map { TestWindow.new(id: UInt32($0), parent: accordion) }
+        let sibling = TestWindow.new(id: 4, parent: root)
+        try await workspace.layoutWorkspace()
+        assertTrue(accordionWindows[1].focusWindow())
+
+        _ = await parseCommand("resize width +500").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+
+        XCTAssertEqual(accordion.hWeight, 1133.6, accuracy: 0.001)
+        XCTAssertEqual(sibling.hWeight, 380.16, accuracy: 0.001)
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 203.12, y: 54, width: 1513.76, height: 972)
+        let accordionFrames = try await frames(of: accordionWindows).compactMap { $0 }
+        XCTAssertTrue(accordionFrames.allSatisfy { $0.width > 0 })
     }
 
     func testAdaptiveLoneWindowWidthAndSmartResizeApplyOnNextLayout() async throws {
@@ -456,6 +811,391 @@ final class AdaptiveLayoutTest: XCTestCase {
         XCTAssertEqual(second.hWeight / 1536, 1 - resizedRatio, accuracy: 0.000_001)
     }
 
+    func testAdaptiveMouseRightEdgeUsesGestureBaselineReversesAndRestoresClampedActualFrame() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        let second = TestWindow.new(id: 2, parent: root)
+        try await workspace.layoutWorkspace()
+        let baseline = try await first.getAxRect(.nonCancellable).orDie()
+
+        first.setAxFrame(nil, CGSize(width: baseline.width + 3, height: baseline.height))
+        try await resizeWithMouse(first)
+        assertEquals(root.children.map(\.hWeight), [633.6, 633.6])
+
+        first.setAxFrame(nil, CGSize(width: baseline.width + 100, height: baseline.height))
+        try await resizeWithMouse(first)
+        assertEquals(root.children.map(\.hWeight), [733.6, 533.6])
+
+        first.setAxFrame(nil, CGSize(width: baseline.width + 200, height: baseline.height))
+        try await resizeWithMouse(first)
+        assertEquals(root.children.map(\.hWeight), [833.6, 433.6])
+
+        first.setAxFrame(baseline.topLeftCorner, baseline.size)
+        try await resizeWithMouse(first)
+        assertEquals(root.children.map(\.hWeight), [633.6, 633.6])
+
+        first.setAxFrame(nil, CGSize(width: baseline.width - 50, height: baseline.height))
+        try await resizeWithMouse(first)
+        assertEquals(root.children.map(\.hWeight), [583.6, 683.6])
+
+        first.setAxFrame(nil, CGSize(width: 100, height: baseline.height))
+        try await resizeWithMouse(first)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 380.16, height: 971)
+        XCTAssertEqual(first.hWeight, 380.16, accuracy: 0.001)
+
+        first.setAxFrame(nil, CGSize(width: baseline.width + 10000, height: baseline.height))
+        try await resizeWithMouse(first)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 326.4, y: 54, width: 1593.6, height: 972)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 1539.84, y: 54, width: 380.16, height: 971)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 1213.44, height: 971)
+
+        try await resetManipulatedWithMouseIfPossible()
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 163.2, y: 54, width: 1593.6, height: 972)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 163.2, y: 54, width: 1213.44, height: 971)
+
+        let secondGestureBaseline = try await first.getAxRect(.nonCancellable).orDie()
+        first.setAxFrame(nil, CGSize(width: secondGestureBaseline.width - 100, height: secondGestureBaseline.height))
+        try await resizeWithMouse(first)
+        XCTAssertEqual(first.hWeight, 1113.44, accuracy: 0.001)
+        try await resetManipulatedWithMouseIfPossible()
+    }
+
+    func testAdaptiveMouseLeftEdgeKeepsRightEdgeFixedThroughZeroAndReversalThenRecentres() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        let second = TestWindow.new(id: 2, parent: root)
+        try await workspace.layoutWorkspace()
+        let baseline = try await first.getAxRect(.nonCancellable).orDie()
+
+        first.setAxFrame(
+            CGPoint(x: baseline.minX - 100, y: baseline.minY),
+            CGSize(width: baseline.width + 100, height: baseline.height),
+        )
+        try await resizeWithMouse(first)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 226.4, y: 54, width: 1267.2, height: 972)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 226.4, y: 54, width: 733.6, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 960, y: 54, width: 533.6, height: 971)
+
+        first.setAxFrame(baseline.topLeftCorner, baseline.size)
+        try await resizeWithMouse(first)
+        assertEquals(root.children.map(\.hWeight), [633.6, 633.6])
+
+        first.setAxFrame(
+            CGPoint(x: baseline.minX + 50, y: baseline.minY),
+            CGSize(width: baseline.width - 50, height: baseline.height),
+        )
+        try await resizeWithMouse(first)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 376.4, y: 54, width: 1267.2, height: 972)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 960, y: 54, width: 683.6, height: 971)
+
+        try await resetManipulatedWithMouseIfPossible()
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 326.4, y: 54, width: 1267.2, height: 972)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 583.6, height: 971)
+    }
+
+    func testAdaptiveMouseMiddleWindowKeepsOppositeEdgeAtFullWidthInBothDirections() async throws {
+        for edge in [AdaptiveHorizontalResizeAnchorEdge.minX, .maxX] {
+            setUpWorkspacesForTests()
+            config.adaptiveLayout.enabled = .constant(true)
+            let workspace = focus.workspace
+            let root = workspace.rootTilingContainer
+            let first = TestWindow.new(id: 1, parent: root)
+            let middle = TestWindow.new(id: 2, parent: root)
+            let third = TestWindow.new(id: 3, parent: root)
+            try await workspace.layoutWorkspace()
+            let baseline = try await middle.getAxRect(.nonCancellable).orDie()
+
+            switch edge {
+                case .minX:
+                    middle.setAxFrame(nil, CGSize(width: baseline.width + 100, height: baseline.height))
+                case .maxX:
+                    middle.setAxFrame(
+                        CGPoint(x: baseline.minX - 100, y: baseline.minY),
+                        CGSize(width: baseline.width + 100, height: baseline.height),
+                    )
+            }
+            try await resizeWithMouse(middle)
+            try await workspace.layoutWorkspace()
+
+            let firstFrame = try await first.getAxRect(.nonCancellable).orDie()
+            let middleFrame = try await middle.getAxRect(.nonCancellable).orDie()
+            let thirdFrame = try await third.getAxRect(.nonCancellable).orDie()
+            assertRect(workspace.lastAppliedLayoutVirtualRect, x: 0, y: 54, width: 1920, height: 972)
+            XCTAssertEqual(middleFrame.width, 740, accuracy: 0.001)
+            switch edge {
+                case .minX:
+                    XCTAssertEqual(middleFrame.minX, baseline.minX, accuracy: 0.001)
+                    XCTAssertEqual(firstFrame.maxX, middleFrame.minX, accuracy: 0.001)
+                    XCTAssertEqual(middleFrame.maxX, thirdFrame.minX, accuracy: 0.001)
+                case .maxX:
+                    XCTAssertEqual(middleFrame.maxX, baseline.maxX, accuracy: 0.001)
+                    XCTAssertEqual(firstFrame.maxX, middleFrame.minX, accuracy: 0.001)
+                    XCTAssertEqual(middleFrame.maxX, thirdFrame.minX, accuracy: 0.001)
+            }
+
+            switch edge {
+                case .minX:
+                    middle.setAxFrame(nil, CGSize(width: baseline.width + 400, height: baseline.height))
+                case .maxX:
+                    middle.setAxFrame(
+                        CGPoint(x: baseline.minX - 400, y: baseline.minY),
+                        CGSize(width: baseline.width + 400, height: baseline.height),
+                    )
+            }
+            try await resizeWithMouse(middle)
+            try await workspace.layoutWorkspace()
+            let cappedFirst = try await first.getAxRect(.nonCancellable).orDie()
+            let cappedMiddle = try await middle.getAxRect(.nonCancellable).orDie()
+            let cappedThird = try await third.getAxRect(.nonCancellable).orDie()
+            XCTAssertEqual(cappedMiddle.width, 899.84, accuracy: 0.001)
+            XCTAssertEqual(cappedFirst.maxX, cappedMiddle.minX, accuracy: 0.001)
+            XCTAssertEqual(cappedMiddle.maxX, cappedThird.minX, accuracy: 0.001)
+
+            switch edge {
+                case .minX:
+                    middle.setAxFrame(nil, CGSize(width: baseline.width + 50, height: baseline.height))
+                case .maxX:
+                    middle.setAxFrame(
+                        CGPoint(x: baseline.minX - 50, y: baseline.minY),
+                        CGSize(width: baseline.width + 50, height: baseline.height),
+                    )
+            }
+            try await resizeWithMouse(middle)
+            try await workspace.layoutWorkspace()
+            let reversedMiddle = try await middle.getAxRect(.nonCancellable).orDie()
+            let reversedThird = try await third.getAxRect(.nonCancellable).orDie()
+            XCTAssertEqual(reversedMiddle.width, 690, accuracy: 0.001)
+            XCTAssertEqual(reversedMiddle.maxX, reversedThird.minX, accuracy: 0.001)
+
+            switch edge {
+                case .minX:
+                    middle.setAxFrame(nil, CGSize(width: baseline.width + 400, height: baseline.height))
+                case .maxX:
+                    middle.setAxFrame(
+                        CGPoint(x: baseline.minX - 400, y: baseline.minY),
+                        CGSize(width: baseline.width + 400, height: baseline.height),
+                    )
+            }
+            try await resizeWithMouse(middle)
+            try await workspace.layoutWorkspace()
+            let recappedMiddle = try await middle.getAxRect(.nonCancellable).orDie()
+            XCTAssertEqual(recappedMiddle.width, 899.84, accuracy: 0.001)
+            try await resetManipulatedWithMouseIfPossible()
+            try await workspace.layoutWorkspace()
+            assertEquals(try await middle.getAxRect(.nonCancellable), middle.lastAppliedLayoutPhysicalRect)
+        }
+    }
+
+    func testAdaptiveMouseNestedGappedTargetKeepsFixedEdgeAndNeighbourGap() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        config.gaps.inner.horizontal = .constant(20)
+        var top: Window!
+        var bottom: Window!
+        TilingContainer.newVTiles(parent: root, adaptiveWeight: 1).apply {
+            top = TestWindow.new(id: 1, parent: $0)
+            bottom = TestWindow.new(id: 2, parent: $0)
+        }
+        let right = TestWindow.new(id: 3, parent: root)
+        try await workspace.layoutWorkspace()
+        let baseline = try await top.getAxRect(.nonCancellable).orDie()
+
+        top.setAxFrame(nil, CGSize(width: baseline.width + 100, height: baseline.height))
+        try await resizeWithMouse(top)
+        try await workspace.layoutWorkspace()
+
+        let topFrame = try await top.getAxRect(.nonCancellable).orDie()
+        let bottomFrame = try await bottom.getAxRect(.nonCancellable).orDie()
+        let rightFrame = try await right.getAxRect(.nonCancellable).orDie()
+        XCTAssertEqual(topFrame.minX, baseline.minX, accuracy: 0.001)
+        XCTAssertEqual(topFrame.width, 723.6, accuracy: 0.001)
+        XCTAssertEqual(bottomFrame.width, 723.6, accuracy: 0.001)
+        XCTAssertEqual(rightFrame.minX - topFrame.maxX, 20, accuracy: 0.001)
+        try await resetManipulatedWithMouseIfPossible()
+    }
+
+    func testAdaptiveMouseClampRefusalGuardRetriesOnlyAfterHorizontalInputChanges() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        TestWindow.new(id: 2, parent: root)
+        try await workspace.layoutWorkspace()
+        let baseline = try await first.getAxRect(.nonCancellable).orDie()
+
+        first.setAxFrame(nil, CGSize(width: baseline.width + 10000, height: baseline.height))
+        first.rejectAxFrameChangesForTest = true
+        let callsBeforeClamp = first.setAxFrameCallCountForTest
+        try await resizeWithMouse(first)
+        XCTAssertEqual(first.setAxFrameCallCountForTest, callsBeforeClamp + 1)
+        try await resizeWithMouse(first)
+        XCTAssertEqual(first.setAxFrameCallCountForTest, callsBeforeClamp + 1)
+
+        let refusedFrame = try await first.getAxRect(.nonCancellable).orDie()
+        first.rejectAxFrameChangesForTest = false
+        first.setAxFrame(
+            CGPoint(x: refusedFrame.minX, y: refusedFrame.minY - 20),
+            CGSize(width: refusedFrame.width, height: refusedFrame.height + 20),
+        )
+        first.rejectAxFrameChangesForTest = true
+        let callsAfterVerticalChange = first.setAxFrameCallCountForTest
+        try await resizeWithMouse(first)
+        XCTAssertEqual(first.setAxFrameCallCountForTest, callsAfterVerticalChange)
+
+        first.rejectAxFrameChangesForTest = false
+        first.setAxFrame(nil, CGSize(width: baseline.width + 9000, height: baseline.height))
+        try await resizeWithMouse(first)
+        let callsAfterSuccessfulClamp = first.setAxFrameCallCountForTest
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 34, width: 1213.44, height: 971)
+
+        try await resizeWithMouse(first)
+        first.setAxFrame(nil, CGSize(width: baseline.width + 10000, height: baseline.height))
+        try await resizeWithMouse(first)
+        XCTAssertEqual(first.setAxFrameCallCountForTest, callsAfterSuccessfulClamp + 2)
+        try await resetManipulatedWithMouseIfPossible()
+    }
+
+    func testAdaptiveMouseTopologyInvalidationDoesNotMutateNewNodeAndReleaseRestoresActualFrame() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        let second = TestWindow.new(id: 2, parent: root)
+        try await workspace.layoutWorkspace()
+        let baseline = try await first.getAxRect(.nonCancellable).orDie()
+        first.setAxFrame(nil, CGSize(width: baseline.width + 100, height: baseline.height))
+        try await resizeWithMouse(first)
+
+        let third = TestWindow.new(id: 3, parent: root, adaptiveWeight: WEIGHT_AUTO)
+        let weightsAfterTopologyChange = root.children.map(\.hWeight)
+        first.setAxFrame(nil, CGSize(width: baseline.width + 200, height: baseline.height))
+        try await resizeWithMouse(first)
+        try await resizeWithMouse(first)
+        assertEquals(root.children.map(\.hWeight), weightsAfterTopologyChange)
+        XCTAssertEqual(third.hWeight, weightsAfterTopologyChange[2], accuracy: 0.001)
+
+        try await resetManipulatedWithMouseIfPossible()
+        try await workspace.layoutWorkspace()
+        let restoredFirst = try await first.getAxRect(.nonCancellable).orDie()
+        let restoredSecond = try await second.getAxRect(.nonCancellable).orDie()
+        assertEquals(restoredFirst, first.lastAppliedLayoutPhysicalRect)
+        XCTAssertNotEqual(restoredFirst.width, baseline.width + 200)
+        XCTAssertGreaterThan(restoredSecond.width, 0)
+    }
+
+    func testAdaptiveMouseInvalidationSuppressesLaterLegacyWidthEvents() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        TestWindow.new(id: 2, parent: root)
+        try await workspace.layoutWorkspace()
+        let baseline = try await first.getAxRect(.nonCancellable).orDie()
+        first.setAxFrame(nil, CGSize(width: baseline.width + 100, height: baseline.height))
+        try await resizeWithMouse(first)
+        let adaptiveWeights = root.children.map(\.hWeight)
+
+        config.adaptiveLayout.enabled = .constant(false)
+        first.setAxFrame(nil, CGSize(width: baseline.width + 200, height: baseline.height))
+        try await resizeWithMouse(first)
+        first.setAxFrame(nil, CGSize(width: baseline.width + 300, height: baseline.height))
+        try await resizeWithMouse(first)
+
+        assertEquals(root.children.map(\.hWeight), adaptiveWeights)
+        try await resetManipulatedWithMouseIfPossible()
+    }
+
+    func testAdaptiveMouseFocusActivationSuppressesLaterGestureEvents() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        TestWindow.new(id: 2, parent: root)
+        assertTrue(first.focusWindow())
+        try await workspace.layoutWorkspace()
+        let baseline = try await first.getAxRect(.nonCancellable).orDie()
+        first.setAxFrame(nil, CGSize(width: baseline.width + 100, height: baseline.height))
+        try await resizeWithMouse(first)
+        let adaptiveWeights = root.children.map(\.hWeight)
+
+        let startedFocusMode = await FocusMode.shared.start(window: first, workspace: workspace, stayOnMonitor: true)
+        assertTrue(startedFocusMode)
+        first.setAxFrame(nil, CGSize(width: baseline.width + 200, height: baseline.height))
+        try await resizeWithMouse(first)
+        first.setAxFrame(nil, CGSize(width: baseline.width + 300, height: baseline.height))
+        try await resizeWithMouse(first)
+
+        assertEquals(root.children.map(\.hWeight), adaptiveWeights)
+        FocusMode.shared.stop()
+        try await resetManipulatedWithMouseIfPossible()
+    }
+
+    func testAdaptiveMouseDisplayInvalidationRestoresWindowOnDestinationMonitor() async throws {
+        let wide = AdaptiveTestMonitor(name: "Wide", x: 0, isMain: true)
+        let narrow = AdaptiveTestMonitor(
+            name: "Narrow",
+            x: 1920,
+            isMain: false,
+            monitorWidth: 1200,
+        )
+        monitorInfosForTests = [wide, narrow]
+        let workspace = focus.workspace
+        assertTrue(wide.setActiveWorkspace(workspace))
+        let first = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
+        TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
+        try await workspace.layoutWorkspace()
+        let baseline = try await first.getAxRect(.nonCancellable).orDie()
+        first.setAxFrame(nil, CGSize(width: baseline.width + 100, height: baseline.height))
+        try await resizeWithMouse(first)
+        let gestureWeights = workspace.rootTilingContainer.children.map(\.hWeight)
+
+        assertTrue(narrow.setActiveWorkspace(workspace))
+        first.setAxFrame(nil, CGSize(width: baseline.width + 200, height: baseline.height))
+        try await resizeWithMouse(first)
+        try await resizeWithMouse(first)
+        assertEquals(workspace.rootTilingContainer.children.map(\.hWeight), gestureWeights)
+
+        try await resetManipulatedWithMouseIfPossible()
+        try await workspace.layoutWorkspace()
+        let restored = try await first.getAxRect(.nonCancellable).orDie()
+        assertEquals(restored, first.lastAppliedLayoutPhysicalRect)
+        XCTAssertGreaterThanOrEqual(restored.minX, narrow.visibleRect.minX)
+        XCTAssertLessThanOrEqual(restored.maxX, narrow.visibleRect.maxX)
+    }
+
+    func testExpandedWorkspaceContractsSafelyWhenMovedToSmallerMonitor() async throws {
+        let wide = AdaptiveTestMonitor(name: "Wide", x: 0, isMain: true)
+        let narrow = AdaptiveTestMonitor(
+            name: "Narrow",
+            x: 1920,
+            isMain: false,
+            monitorWidth: 1200,
+        )
+        monitorInfosForTests = [wide, narrow]
+        let workspace = focus.workspace
+        assertTrue(wide.setActiveWorkspace(workspace))
+        let first = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
+        let second = TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
+        assertTrue(first.focusWindow())
+        try await workspace.layoutWorkspace()
+        _ = await parseCommand("resize width +99999").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 0, y: 54, width: 1920, height: 972)
+
+        assertTrue(narrow.setActiveWorkspace(workspace))
+        try await workspace.layoutWorkspace()
+
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 1920, y: 54, width: 1200, height: 972)
+        for frame in try await frames(of: [first, second]).compactMap({ $0 }) {
+            XCTAssertGreaterThan(frame.width, 0)
+            XCTAssertGreaterThanOrEqual(frame.minX, narrow.visibleRect.minX)
+            XCTAssertLessThanOrEqual(frame.maxX, narrow.visibleRect.maxX + 0.001)
+        }
+    }
+
     func testMouseHeightResizeUpdatesNestedVerticalDivider() async throws {
         let workspace = focus.workspace
         let root = workspace.rootTilingContainer
@@ -478,6 +1218,41 @@ final class AdaptiveLayoutTest: XCTestCase {
 
         assertRect(try await top.getAxRect(.nonCancellable), x: 326.4, y: 0, width: 633.6, height: 619.5)
         assertRect(try await bottom.getAxRect(.nonCancellable), x: 326.4, y: 619.5, width: 633.6, height: 459.5)
+    }
+
+    func testAdaptiveMouseCornerDragKeepsHorizontalSnapshotSeparateFromVerticalResize() async throws {
+        let workspace = focus.workspace
+        let root = workspace.rootTilingContainer
+        var top: Window!
+        var bottom: Window!
+        let left = TilingContainer.newVTiles(parent: root, adaptiveWeight: 1).apply {
+            top = TestWindow.new(id: 1, parent: $0)
+            bottom = TestWindow.new(id: 2, parent: $0)
+        }
+        let right = TestWindow.new(id: 3, parent: root)
+        try await workspace.layoutWorkspace()
+        let baseline = try await top.getAxRect(.nonCancellable).orDie()
+
+        top.setAxFrame(
+            nil,
+            CGSize(width: baseline.width + 100, height: baseline.height + 80),
+        )
+        try await resizeWithMouse(top)
+        XCTAssertEqual(left.hWeight, 733.6, accuracy: 0.001)
+        XCTAssertEqual(right.hWeight, 533.6, accuracy: 0.001)
+        XCTAssertEqual(top.vWeight, 619.5, accuracy: 0.001)
+        XCTAssertEqual(bottom.vWeight, 459.5, accuracy: 0.001)
+
+        top.setAxFrame(
+            nil,
+            CGSize(width: baseline.width + 150, height: baseline.height + 100),
+        )
+        try await resizeWithMouse(top)
+        XCTAssertEqual(left.hWeight, 783.6, accuracy: 0.001)
+        XCTAssertEqual(right.hWeight, 483.6, accuracy: 0.001)
+        XCTAssertEqual(top.vWeight, 639.5, accuracy: 0.001)
+        XCTAssertEqual(bottom.vWeight, 439.5, accuracy: 0.001)
+        try await resetManipulatedWithMouseIfPossible()
     }
 
     func testFocusModeAndFullscreenOverrideOnlyTheirLeafFrames() async throws {
@@ -582,8 +1357,10 @@ private struct AdaptiveTestMonitor: MonitorInfo {
     let x: CGFloat
     var y: CGFloat = 0
     let isMain: Bool
+    var monitorWidth: CGFloat = 1920
+    var monitorHeight: CGFloat = 1080
     var monitorAppKitNsScreenScreensId: Int { isMain ? 1 : 2 }
-    var rect: Rect { Rect(topLeftX: x, topLeftY: y, width: 1920, height: 1080) }
+    var rect: Rect { Rect(topLeftX: x, topLeftY: y, width: monitorWidth, height: monitorHeight) }
     var visibleRect: Rect { rect }
     var width: CGFloat { rect.width }
     var height: CGFloat { rect.height }

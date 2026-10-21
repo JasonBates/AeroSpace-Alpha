@@ -64,12 +64,18 @@ adaptive-layout.enabled = [{ monitor."YOUR MONITOR NAME" = true }, false]
 adaptive-layout.one-column-width-percent = 33
 adaptive-layout.two-column-width-percent = 66
 adaptive-layout.single-row-height-percent = 90
+adaptive-layout.minimum-window-width-percent = 60
 ```
 
 Reload the config. On the selected monitor, a lone window uses 33% width; two
 columns or one vertical stack of two or more rows use 66%; three or more columns
 use the full width. One row uses 90% height, and multiple rows use full height.
-Other monitors keep normal sizing. Focus Mode and fullscreen still work.
+Other monitors keep normal sizing. During a horizontal resize, neighbouring
+windows shrink to 60% of the normal one-column content width before the centred
+workspace grows. Nested horizontal groups include their inner gaps in that
+minimum. Keyboard resizing remains centred; mouse resizing keeps the opposite
+edge fixed during the gesture and recentres on release. Focus Mode and
+fullscreen still work.
 
 ## Existing users and optional extras
 

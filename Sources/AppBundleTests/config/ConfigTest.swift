@@ -566,6 +566,7 @@ final class ConfigTest: XCTestCase {
                 one-column-width-percent = 40
                 two-column-width-percent = 75
                 single-row-height-percent = 85
+                minimum-window-width-percent = 55
             """,
         )
         assertEquals(scalar.errors, [])
@@ -576,6 +577,7 @@ final class ConfigTest: XCTestCase {
                 oneColumnWidthPercent: 40,
                 twoColumnWidthPercent: 75,
                 singleRowHeightPercent: 85,
+                minimumWindowWidthPercent: 55,
             ),
         )
 
@@ -596,6 +598,7 @@ final class ConfigTest: XCTestCase {
         assertEquals(perMonitor.config.adaptiveLayout.oneColumnWidthPercent, 33)
         assertEquals(perMonitor.config.adaptiveLayout.twoColumnWidthPercent, 66)
         assertEquals(perMonitor.config.adaptiveLayout.singleRowHeightPercent, 90)
+        assertEquals(perMonitor.config.adaptiveLayout.minimumWindowWidthPercent, 60)
     }
 
     func testParseAdaptiveLayoutRejectsInvalidPercentagesAndUnknownKeys() {
@@ -610,6 +613,10 @@ final class ConfigTest: XCTestCase {
         assertEquals(
             parseConfig("adaptive-layout.single-row-height-percent = -1").strErrors,
             ["[ERROR] adaptive-layout.single-row-height-percent: Expected an integer from 1 to 100"],
+        )
+        assertEquals(
+            parseConfig("adaptive-layout.minimum-window-width-percent = 0").strErrors,
+            ["[ERROR] adaptive-layout.minimum-window-width-percent: Expected an integer from 1 to 100"],
         )
         assertEquals(
             parseConfig("adaptive-layout.mystery = true").strErrors,

@@ -5,6 +5,7 @@ private let adaptiveLayoutParser: [String: any ParserProtocol<AdaptiveLayoutConf
     "one-column-width-percent": Parser(\.oneColumnWidthPercent, parseAdaptiveLayoutPercent),
     "two-column-width-percent": Parser(\.twoColumnWidthPercent, parseAdaptiveLayoutPercent),
     "single-row-height-percent": Parser(\.singleRowHeightPercent, parseAdaptiveLayoutPercent),
+    "minimum-window-width-percent": Parser(\.minimumWindowWidthPercent, parseAdaptiveLayoutPercent),
 ]
 
 private func parseAdaptiveLayoutEnabled(

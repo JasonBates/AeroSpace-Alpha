@@ -13,6 +13,20 @@ extension Workspace {
         if adaptiveLayoutEnabled {
             if let footprint = rootTilingContainer.tilingFootprint {
                 layoutRect = adaptiveWorkspaceRect(available: rect, footprint: footprint, config: config.adaptiveLayout)
+                let horizontalGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspaceMonitor).inner.horizontal)
+                let expandedWidth = adaptiveExpandedWorkspaceWidth(
+                    normalWidth: layoutRect.width,
+                    availableWidth: rect.width,
+                    root: rootTilingContainer,
+                    config: config.adaptiveLayout,
+                    horizontalGap: horizontalGap,
+                )
+                layoutRect = Rect(
+                    topLeftX: rect.topLeftX + (rect.width - expandedWidth) / 2,
+                    topLeftY: layoutRect.topLeftY,
+                    width: expandedWidth,
+                    height: layoutRect.height,
+                )
                 let participatingWindows = rootTilingContainer.allLeafWindowsRecursive.filter { !$0.isAwaitingOnWindowDetected }
                 if footprint.columns == 1, let loneWindow = participatingWindows.singleOrNil() {
                     let width = loneWindow.singleWindowWidth(base: layoutRect.width, available: rect.width)
@@ -39,6 +53,13 @@ extension Workspace {
                 let xOffset = (rect.width - targetWidth) / 2
                 layoutRect = Rect(topLeftX: rect.topLeftX + xOffset, topLeftY: rect.topLeftY, width: targetWidth, height: rect.height)
             }
+        }
+        if adaptiveLayoutEnabled {
+            layoutRect = adaptiveMouseAnchoredWorkspaceRect(
+                workspace: self,
+                centered: layoutRect,
+                available: rect,
+            )
         }
         try await layoutRecursive(
             layoutRect.topLeftCorner,
@@ -189,10 +210,9 @@ extension TilingContainer {
     /// makes its siblings jump, and the space is handed back a moment later.
     @MainActor
     private func layoutChildren(adaptiveLayoutEnabled: Bool) -> [TreeNode] {
-        children.filter {
-            ($0 as? Window)?.isAwaitingOnWindowDetected != true &&
-                (!adaptiveLayoutEnabled || $0.tilingFootprint != nil)
-        }
+        adaptiveLayoutEnabled
+            ? adaptiveParticipatingChildren(self)
+            : children.filter { ($0 as? Window)?.isAwaitingOnWindowDetected != true }
     }
 
     @MainActor
@@ -200,7 +220,10 @@ extension TilingContainer {
         var point = point
         var virtualPoint = virtual.topLeftCorner
         let children = layoutChildren(adaptiveLayoutEnabled: context.adaptiveLayoutEnabled)
-        let rawGap = context.resolvedGaps.inner.get(orientation).toDouble()
+        let configuredGap = context.resolvedGaps.inner.get(orientation).toDouble()
+        let rawGap = context.adaptiveLayoutEnabled && orientation == .h
+            ? adaptiveEffectiveHorizontalGap(configuredGap: configuredGap, width: width, childCount: children.count)
+            : configuredGap
 
         preserveAdaptiveProportionsIfNeeded(
             children: children,
@@ -208,6 +231,18 @@ extension TilingContainer {
             innerGap: rawGap,
             adaptiveLayoutEnabled: context.adaptiveLayoutEnabled,
         )
+
+        if context.adaptiveLayoutEnabled, orientation == .h {
+            enforceAdaptiveHorizontalMinimums(
+                children: children,
+                width: width,
+                horizontalGap: rawGap,
+                minimumWindowWidth: adaptiveMinimumWindowPhysicalWidth(
+                    availableWidth: context.workspace.workspaceMonitor.visibleRectPaddedByOuterGaps.width,
+                    config: config.adaptiveLayout,
+                ),
+            )
+        }
 
         guard let delta = ((orientation == .h ? width : height) - CGFloat(children.sumOfDouble { $0.getWeight(orientation) }))
             .div(children.count) else { return }
@@ -221,9 +256,11 @@ extension TilingContainer {
             // 3. Multiple children. Layout child in the middle
             // 4. Single child   let rawGap = gaps.inner.get(orientation).toDouble()
             let gap = rawGap - (i == 0 ? rawGap / 2 : 0) - (i == lastIndex ? rawGap / 2 : 0)
+            let rawChildWidth = orientation == .h ? child.hWeight - gap : width
+            let childWidth = context.adaptiveLayoutEnabled ? max(1, rawChildWidth) : rawChildWidth
             try await child.layoutRecursive(
                 i == 0 ? point : point.addingOffset(orientation, rawGap / 2),
-                width: orientation == .h ? child.hWeight - gap : width,
+                width: childWidth,
                 height: orientation == .v ? child.vWeight - gap : height,
                 virtual: Rect(
                     topLeftX: virtualPoint.x,

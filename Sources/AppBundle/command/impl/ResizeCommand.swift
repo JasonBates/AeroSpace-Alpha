@@ -96,6 +96,28 @@ struct ResizeCommand: Command {
         guard let parent else { return .fail(io.err("The window isn't inside a tiles container that can be resized")) }
         guard let orientation else { return .fail }
         guard let node else { return .fail }
+
+        if orientation == .h,
+           let workspace = node.nodeWorkspace,
+           config.adaptiveLayout.enabled.getValue(for: workspace.workspaceMonitor),
+           target.windowOrNil.flatMap({ FocusMode.shared.frame(for: $0, in: workspace) }) == nil,
+           let currentWidth = adaptiveCurrentPhysicalWidth(of: node, in: parent, workspace: workspace)
+        {
+            let requestedWidth: CGFloat = switch args.units.val {
+                case .set(let unit): CGFloat(unit)
+                case .add(let unit): currentWidth + CGFloat(unit)
+                case .subtract(let unit): currentWidth - CGFloat(unit)
+            }
+            if resizeAdaptiveHorizontally(
+                node: node,
+                parent: parent,
+                requestedPhysicalWidth: requestedWidth,
+                workspace: workspace,
+            ) != nil {
+                return .succ
+            }
+        }
+
         let diff: CGFloat = switch args.units.val {
             case .set(let unit): CGFloat(unit) - node.getWeight(orientation)
             case .add(let unit): CGFloat(unit)

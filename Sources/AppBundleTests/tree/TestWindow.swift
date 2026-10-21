@@ -5,6 +5,8 @@ final class TestWindow: Window, CustomStringConvertible {
     private var _rect: Rect?
     var isMacosFullscreenForTest = false
     var onGetAxRect: (@MainActor () -> Void)?
+    var rejectAxFrameChangesForTest = false
+    var setAxFrameCallCountForTest = 0
 
     @MainActor
     private init(_ id: UInt32, _ parent: NonLeafTreeNodeObject, _ adaptiveWeight: CGFloat, _ rect: Rect?) {
@@ -45,6 +47,8 @@ final class TestWindow: Window, CustomStringConvertible {
     }
 
     override func setAxFrame(_ topLeft: CGPoint?, _ size: CGSize?) {
+        setAxFrameCallCountForTest += 1
+        if rejectAxFrameChangesForTest { return }
         let current = _rect ?? Rect(topLeftX: 0, topLeftY: 0, width: 0, height: 0)
         _rect = Rect(
             topLeftX: topLeft?.x ?? current.topLeftX,

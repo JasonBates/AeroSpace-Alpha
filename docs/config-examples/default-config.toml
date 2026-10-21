@@ -53,6 +53,7 @@ apply-aspect-to-accordion = 'none'
 # adaptive-layout.one-column-width-percent = 33
 # adaptive-layout.two-column-width-percent = 66
 # adaptive-layout.single-row-height-percent = 90
+# adaptive-layout.minimum-window-width-percent = 60
 
 # Mouse follows focus when focused monitor changes
 # Drop it from your config, if you don't like this behavior

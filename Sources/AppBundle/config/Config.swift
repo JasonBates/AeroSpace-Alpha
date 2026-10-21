@@ -80,12 +80,14 @@ struct AdaptiveLayoutConfig: ConvenienceMutable, Equatable, Sendable {
     var oneColumnWidthPercent: Int
     var twoColumnWidthPercent: Int
     var singleRowHeightPercent: Int
+    var minimumWindowWidthPercent: Int
 
     static let `default` = AdaptiveLayoutConfig(
         enabled: .constant(false),
         oneColumnWidthPercent: 33,
         twoColumnWidthPercent: 66,
         singleRowHeightPercent: 90,
+        minimumWindowWidthPercent: 60,
     )
 }
 
