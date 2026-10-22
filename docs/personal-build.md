@@ -151,11 +151,12 @@ On a monitor with adaptive layout enabled, its one-column percentage replaces
 this rule for normal tiling and Focus Mode. The rule still applies on other
 monitors.
 
-While a tiled window is alone, my `resize smart +100` and
-`resize smart -100` bindings widen or narrow it by 100 display points and keep
+While a tiled window is alone, my `resize width +100` and
+`resize width -100` bindings widen or narrow it by 100 display points and keep
 it centred. The adjustment belongs only to that window and lasts until it
 closes or AeroSpace restarts. With multiple tiled windows, the same commands
-continue to resize tiles normally.
+continue to resize tiles normally; on a window inside a vertical stack they
+widen or narrow the whole stack, where `resize smart` would change its height.
 
 The [width-rules commit](https://github.com/JasonBates/AeroSpace-Alpha/commit/92be41f)
 shows the additional implementation and tests.
