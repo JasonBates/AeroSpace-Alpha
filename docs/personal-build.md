@@ -46,7 +46,8 @@ has outer gaps removed, and layout applies the configured inner gaps inside it.
 Horizontal resize keeps each participating window readable before widening the
 workspace. `minimum-window-width-percent` is the minimum physical content width
 as a percentage of the normal one-column width; it is not a percentage of the
-whole monitor and it does not infer an application's native minimum. At the
+whole monitor. An application's own minimum is learned separately (see App
+minimum sizes below) and raises the floor for that window only. At the
 default settings on a 1920-point usable display, the one-column width is 633.6
 points and the resize minimum is 380.16 points. A target first takes space
 equally from neighbours that remain above that minimum. Further growth expands
@@ -117,10 +118,34 @@ inner vertical gaps shrink first, then the available content is divided into
 positive frames that remain inside the container.
 
 The starter binding `alt-0 = 'balance-sizes'` restores equal tiled splits on
-the target workspace. It also clears a lone window's width adjustment and Focus
-Mode width and height adjustments, and cancels an active resize gesture so a
+the target workspace. It also clears a lone window's width adjustment, Focus
+Mode width and height adjustments, and learned app minimum sizes, and cancels an active resize gesture so a
 queued mouse event cannot restore stale weights. Floating window frames are not
 changed.
+
+## App minimum sizes
+
+Apps have their own minimum window size (a browser will not go much below
+570 points wide), and macOS offers no Accessibility attribute to read it. A
+tile narrower than that minimum used to leave the window at its own size,
+spilling over its neighbour. After writing a window's frame, AeroSpace now
+reads the size back. A window that stayed larger than requested has shown its
+minimum; AeroSpace reads the size again 150 ms later, so an app that applies
+frames asynchronously is not mistaken for one that refused, then remembers the
+settled size for that window and lays the workspace out again.
+
+The learned width and height then act like `minimum-window-width-percent` and
+`minimum-window-height` for that window only, whichever is larger. On an
+adaptive display the centred workspace widens as it does for the configured
+floor; a vertical stack takes the widest minimum of its windows. Normal
+displays have no configured width floor, so there the learned minimums take
+space from neighbouring tiles while they all fit, and leave the split as it is
+when they cannot. Keyboard and mouse resizing stop at the learned minimum.
+
+A minimum lasts for the window's lifetime. It is replaced when the app refuses
+a smaller size again (a sidebar opened, so the minimum grew), forgotten when the
+window accepts a size below it, and cleared by `balance-sizes`, which is the
+way to retest a window whose minimum has shrunk.
 
 ## Single-window width
 

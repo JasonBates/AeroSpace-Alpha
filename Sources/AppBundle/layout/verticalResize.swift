@@ -85,7 +85,7 @@ func minimumTiledPhysicalHeight(
     minimumWindowHeight: CGFloat,
     verticalGap: CGFloat,
 ) -> CGFloat {
-    if node is Window { return minimumWindowHeight }
+    if let window = node as? Window { return window.tiledMinimumHeight(floor: minimumWindowHeight) }
     guard let container = node as? TilingContainer else { return minimumWindowHeight }
     let children = tiledParticipatingChildren(container)
     guard !children.isEmpty else { return 1 }

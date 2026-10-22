@@ -18,8 +18,8 @@ aerospace balance-sizes [-h|--help] [--workspace <workspace>]
 
 // tag::body[]
 {manpurpose}. Tiled splits are equalized recursively. Per-window adjustments
-for lone-window width and Focus Mode width and height are cleared on the target
-workspace. An active mouse-resize gesture on that workspace is cancelled so it
+for lone-window width and Focus Mode width and height, and minimum sizes learned
+from apps that refused a smaller frame, are cleared on the target workspace. An active mouse-resize gesture on that workspace is cancelled so it
 cannot reapply stale sizes. Ordinary floating window frames are unchanged.
 
 // =========================================================== Options

@@ -251,11 +251,19 @@ final class MacApp: AbstractApp {
         }
     }
 
-    func setAxFrame(_ windowId: UInt32, _ topLeft: CGPoint?, _ size: CGSize?) {
+    func setAxFrame(_ windowId: UInt32, _ topLeft: CGPoint?, _ size: CGSize?, observedMinimumSize: ObservedMinimumSize) {
         setFrameJobs.removeValue(forKey: windowId)?.cancel()
         setFrameJobs[windowId] = withWindowAsync(windowId, .cancellable) { [axApp] window, job in
             try disableAnimations(app: axApp.threadGuarded, job) {
                 try setFrame(window, topLeft, size, job)
+            }
+            // Read the size back: an app that refuses to shrink shows its minimum size this way
+            guard let size else { return }
+            try job.checkCancellation()
+            guard let observed = window.get(Ax.sizeAttr),
+                  observedMinimumSize.updated(requested: size, observed: observed) != observedMinimumSize else { return }
+            Task.startUnstructured { @MainActor in
+                try await Window.get(byId: windowId)?.confirmObservedMinimumSize(requested: size)
             }
         }
     }

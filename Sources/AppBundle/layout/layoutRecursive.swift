@@ -240,6 +240,8 @@ extension TilingContainer {
                     config: config.adaptiveLayout,
                 ),
             )
+        } else if orientation == .h {
+            enforceObservedHorizontalMinimums(children: children, width: width, horizontalGap: rawGap)
         }
         if orientation == .v {
             rawGap = enforceVerticalMinimums(

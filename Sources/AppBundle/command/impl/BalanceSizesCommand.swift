@@ -14,6 +14,8 @@ struct BalanceSizesCommand: Command {
         for window in workspaceWindows {
             window.singleWindowWidthAdjustment = 0
             window.focusModeHeightAdjustment = 0
+            // A minimum learned before an app shrank its own (a closed sidebar) would otherwise never be retested
+            window.observedMinimumSize = ObservedMinimumSize()
         }
         return .succ
     }

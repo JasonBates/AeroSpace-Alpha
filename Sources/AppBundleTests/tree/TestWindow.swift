@@ -6,6 +6,8 @@ final class TestWindow: Window, CustomStringConvertible {
     var isMacosFullscreenForTest = false
     var onGetAxRect: (@MainActor () -> Void)?
     var rejectAxFrameChangesForTest = false
+    /// Like a real app, the window refuses to be made smaller than this
+    var appMinimumSizeForTest: CGSize?
     var setAxFrameCallCountForTest = 0
 
     @MainActor
@@ -53,8 +55,8 @@ final class TestWindow: Window, CustomStringConvertible {
         _rect = Rect(
             topLeftX: topLeft?.x ?? current.topLeftX,
             topLeftY: topLeft?.y ?? current.topLeftY,
-            width: size?.width ?? current.width,
-            height: size?.height ?? current.height,
+            width: max(size?.width ?? current.width, appMinimumSizeForTest?.width ?? 0),
+            height: max(size?.height ?? current.height, appMinimumSizeForTest?.height ?? 0),
         )
     }
 

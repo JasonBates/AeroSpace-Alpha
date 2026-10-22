@@ -156,7 +156,7 @@ func adaptiveMinimumPhysicalWidth(
     minimumWindowWidth: CGFloat,
     horizontalGap: CGFloat,
 ) -> CGFloat {
-    if node is Window { return minimumWindowWidth }
+    if let window = node as? Window { return window.tiledMinimumWidth(floor: minimumWindowWidth) }
     guard let container = node as? TilingContainer else { return minimumWindowWidth }
     let children = adaptiveParticipatingChildren(container)
     guard !children.isEmpty else { return 1 }
@@ -192,7 +192,7 @@ private func adaptiveRequiredPhysicalWidth(
     overrideNode: TreeNode? = nil,
     overridePhysicalWidth: CGFloat? = nil,
 ) -> CGFloat {
-    if node is Window { return minimumWindowWidth }
+    if let window = node as? Window { return window.tiledMinimumWidth(floor: minimumWindowWidth) }
     guard let container = node as? TilingContainer else { return minimumWindowWidth }
     let children = adaptiveParticipatingChildren(container)
     guard !children.isEmpty else { return 1 }
@@ -379,6 +379,33 @@ func enforceAdaptiveHorizontalMinimums(
         gapInsets: insets,
         total: width,
     )
+    for (child, weight) in zip(children, result) {
+        child.setWeight(.h, weight)
+    }
+}
+
+/// Without adaptive layout there is no configured width floor, only the minimums apps have shown
+/// (`ObservedMinimumSize`). They take space from the other children while they all fit; when they
+/// can't, the weights are left as they are.
+@MainActor
+func enforceObservedHorizontalMinimums(
+    children: [TreeNode],
+    width: CGFloat,
+    horizontalGap: CGFloat,
+) {
+    guard children.count > 1 else { return }
+    let minimumRawWidths = children.indices.map { index in
+        adaptiveMinimumPhysicalWidth(children[index], minimumWindowWidth: 1, horizontalGap: horizontalGap) +
+            adaptiveGapInset(index: index, count: children.count, gap: horizontalGap)
+    }
+    // The widths layoutTiles would give the children: it spreads the weight deficit equally
+    let current = children.map { $0.getWeight(.h) }
+    let delta = (width - current.reduce(0, +)) / CGFloat(children.count)
+    let projected = current.map { $0 + delta }
+    guard minimumRawWidths.reduce(0, +) <= width,
+          zip(projected, minimumRawWidths).contains(where: { $0 < $1 - adaptiveGeometryEpsilon })
+    else { return }
+    let result = adaptiveLowerBoundedAllocation(desired: projected, minimums: minimumRawWidths, total: width)
     for (child, weight) in zip(children, result) {
         child.setWeight(.h, weight)
     }

@@ -17,6 +17,8 @@ open class Window: TreeNode, Hashable {
     var singleWindowWidthAdjustment: CGFloat = 0
     // Height adjustment applies only in Focus Mode and follows this window.
     var focusModeHeightAdjustment: CGFloat = 0
+    // The app's own minimum frame, learned from frames it refused. See ObservedMinimumSize
+    var observedMinimumSize = ObservedMinimumSize()
 
     func singleWindowWidth(base: CGFloat, available: CGFloat) -> CGFloat {
         min(available, max(min(200, available), base + singleWindowWidthAdjustment))
