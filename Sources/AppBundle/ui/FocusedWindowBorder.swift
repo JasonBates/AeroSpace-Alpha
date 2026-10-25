@@ -23,7 +23,8 @@ final class FocusedWindowBorder {
               window.visualWorkspace?.isVisible == true,
               isBorderable(window),
               let rect = windowServerFrame(windowId: window.windowId),
-              rect.width > 0, rect.height > 0
+              rect.width > 0, rect.height > 0,
+              !isAwaitingPlacement(window, at: rect)
         else {
             hide()
             return
@@ -59,6 +60,20 @@ final class FocusedWindowBorder {
         trackingTimer?.invalidate()
         trackingTimer = nil
         refresh()
+    }
+
+    /// A new window is focused before the layout pass moves it into its tile, so it still sits wherever the
+    /// app opened it (often the main screen's bottom-left). Skip it until its top-left reaches the tile; the
+    /// AX moved notification from that move redraws the border in the right place.
+    private func isAwaitingPlacement(_ window: Window, at rect: Rect) -> Bool {
+        if window.isAwaitingOnWindowDetected { return true }
+        guard case .tilingContainer = window.windowParentCases,
+              window.windowId != currentlyManipulatedWithMouseWindowId // Follows the pointer while dragged
+        else { return false }
+        // No tile yet: the window joined the tree but hasn't been laid out. Fullscreen windows have none either
+        guard let target = window.lastAppliedLayoutPhysicalRect else { return !window.isFullscreen }
+        let tolerance: CGFloat = 8
+        return abs(rect.topLeftX - target.topLeftX) > tolerance || abs(rect.topLeftY - target.topLeftY) > tolerance
     }
 
     private func isBorderable(_ window: Window) -> Bool {
