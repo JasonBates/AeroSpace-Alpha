@@ -61,13 +61,14 @@ enum GlobalObserver {
             }
         }
 
-        NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { _ in
+        NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { @MainActor _ in
+            // Before the guard: leftMouseDown starts tracking even while AeroSpace is disabled
+            FocusedWindowBorder.shared.stopTracking()
+            guard let token: RunSessionGuard = .isServerEnabled else { return }
             // todo reduce number of refreshSession in the callback
             //  resetManipulatedWithMouseIfPossible might call its own refreshSession
             //  The end of the callback calls refreshSession
             Task.startUnstructured { @MainActor in
-                FocusedWindowBorder.shared.stopTracking()
-                guard let token: RunSessionGuard = .isServerEnabled else { return }
                 if FocusMode.shared.isActive && !FocusMode.shared.containsFocusedWindow(at: mouseLocation) {
                     FocusMode.shared.stop()
                 }

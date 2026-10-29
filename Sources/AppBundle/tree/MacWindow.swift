@@ -207,7 +207,7 @@ final class MacWindow: Window {
     /// `monitor` is the monitor whose corner the window is parked in. Defaults to the window's own monitor
     @MainActor
     func hideInCorner(_ corner: OptimalHideCorner, on monitor: MonitorInfo? = nil) async throws {
-        guard let nodeMonitor = monitor ?? nodeMonitor else { return }
+        guard let nodeMonitorInfo = monitor ?? nodeMonitorInfo else { return }
         // Don't accidentally override prevUnhiddenEmulationPosition in case of subsequent `hideInCorner` calls
         if !isHiddenInCorner {
             guard let windowRect = try await getAxRect(.cancellable) else { return }
@@ -230,12 +230,12 @@ final class MacWindow: Window {
                 // Zoom will jump off if you do one pixel offset https://github.com/nikitabobko/AeroSpace/issues/527
                 // todo this ad hoc won't be necessary once I implement optimization suggested by Zalim
                 let onePixelOffset = macApp.appId == .zoom ? .zero : CGPoint(x: 1, y: -1)
-                p = nodeMonitor.visibleRect.bottomLeftCorner + onePixelOffset + CGPoint(x: -s.width, y: 0)
+                p = nodeMonitorInfo.visibleRect.bottomLeftCorner + onePixelOffset + CGPoint(x: -s.width, y: 0)
             case .bottomRightCorner:
                 // Zoom will jump off if you do one pixel offset https://github.com/nikitabobko/AeroSpace/issues/527
                 // todo this ad hoc won't be necessary once I implement optimization suggested by Zalim
                 let onePixelOffset = macApp.appId == .zoom ? .zero : CGPoint(x: 1, y: 1)
-                p = nodeMonitor.visibleRect.bottomRightCorner - onePixelOffset
+                p = nodeMonitorInfo.visibleRect.bottomRightCorner - onePixelOffset
         }
         // The window is being moved away from whatever layoutRecursive last applied to it, so that record is now
         // stale. Without invalidating it, layoutRecursive's redundant-write skip would wrongly think the window

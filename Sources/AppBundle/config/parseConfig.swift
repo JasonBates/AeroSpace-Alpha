@@ -195,6 +195,7 @@ func parseDeprecatedAfterLoginCommand(_ raw: OrderedJson, _ backtrace: ConfigBac
     return .failure(.init(backtrace, msg))
 }
 
+// todo: issue warnings for unused query only commands like list-*
 func parseShellOfCommandsForConfig(_ raw: OrderedJson, _ backtrace: ConfigBacktrace, _ c: inout ConfigParserContext) -> Shell<any Command> {
     if let rawString = raw.asStringOrNil {
         return parseCommand(rawString, allowExecAndForget: true, allowEval: false).toResult().toParsedConfig(backtrace).getOrNil(appendErrorTo: &c.errors) ?? .empty
@@ -275,7 +276,7 @@ struct ParseConfigResult {
 
     var c = ConfigParserContext(configVersion: configVersion, errors: errors.consume(), warnings: [ConfigParseDiagnostic]())
 
-    var config = rawTable.parseTable(Config(), configParser, .emptyRoot, &c)
+    var config = rawTable.parseTable(Config(), configParser, .emptyRoot, &c, allowEmpty: true)
     config.configVersion = configVersion
 
     if let mapping = rawTable[keyMappingConfigRootKey].flatMap({ parseKeyMapping($0, .rootKey(keyMappingConfigRootKey), &c) }) {
@@ -381,7 +382,7 @@ func parseTomlArray(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrCo
     raw.asArrayOrNil.toResult(expectedActualTypeDiagnostic(expected: .array, actual: raw.tomlType, backtrace))
 }
 
-func parseTable<T: ConvenienceMutable>(
+func parseNonEmptyTable<T: ConvenienceMutable>(
     _ raw: OrderedJson,
     _ initial: T,
     _ fieldsParser: [String: any ParserProtocol<T>],
@@ -390,7 +391,7 @@ func parseTable<T: ConvenienceMutable>(
 ) -> T {
     switch raw {
         case .dict(let table):
-            return table.parseTable(initial, fieldsParser, backtrace, &c)
+            return table.parseTable(initial, fieldsParser, backtrace, &c, allowEmpty: false)
         default:
             c.errors.append(expectedActualTypeDiagnostic(expected: .table, actual: raw.tomlType, backtrace))
             return initial
@@ -561,7 +562,11 @@ extension OrderedJson.JsonDict {
         _ fieldsParser: [String: any ParserProtocol<T>],
         _ backtrace: ConfigBacktrace,
         _ c: inout ConfigParserContext,
+        allowEmpty: Bool,
     ) -> T {
+        if !allowEmpty && self.isEmpty {
+            c.errors.append(ConfigParseDiagnostic.init(backtrace, "empty table is not allowed here"))
+        }
         var raw = initial
 
         for (key, value) in self {

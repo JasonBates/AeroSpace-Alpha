@@ -11,5 +11,5 @@ func isManipulatedWithMouse(_ window: Window) async throws -> Bool {
         .andAsync { @Sendable @MainActor in try await getNativeFocusedWindow(.cancellable) == window }
 }
 
-/// Same motivation as in monitorFrameNormalized
+/// Same motivation as in withYAxisFlipped
 var mouseLocation: CGPoint { NSEvent.mouseLocation.withYAxisFlipped }

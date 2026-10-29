@@ -42,7 +42,7 @@ struct MoveCommand: Command {
                 let pixels: CGFloat
                 if let floatingPixels = args.floatingPixels {
                     pixels = CGFloat(floatingPixels)
-                } else if let monitor = currentWindow.nodeMonitor {
+                } else if let monitor = currentWindow.nodeMonitorInfo {
                     pixels = monitor.rect.getDimension(direction.orientation) * 0.1
                 } else {
                     return .fail(io.err("Can't find the monitor for the floating window"))

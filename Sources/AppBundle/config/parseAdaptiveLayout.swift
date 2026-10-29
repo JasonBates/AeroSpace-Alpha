@@ -30,7 +30,7 @@ func parseAdaptiveLayout(
     _ backtrace: ConfigBacktrace,
     _ c: inout ConfigParserContext,
 ) -> AdaptiveLayoutConfig {
-    let result = parseTable(raw, .default, adaptiveLayoutParser, backtrace, &c)
+    let result = parseNonEmptyTable(raw, .default, adaptiveLayoutParser, backtrace, &c)
     if result.oneColumnWidthPercent > result.twoColumnWidthPercent {
         c.errors.append(.init(
             backtrace + .key("one-column-width-percent"),
