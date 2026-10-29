@@ -84,6 +84,7 @@ enum GlobalObserver {
         )
 
         NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { @MainActor _ in
+            workspaceFocusHold = nil // A click is a request, not fallout of a close
             FocusedWindowBorder.shared.startTracking()
             if FocusMode.shared.isActive && !FocusMode.shared.containsFocusedWindow(at: mouseLocation) {
                 FocusMode.shared.stop()

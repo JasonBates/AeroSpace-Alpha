@@ -29,7 +29,7 @@ func isNativeFocusReadingStale(frontmostPidBefore: pid_t?, frontmostPidAfter: pi
         return
     }
     if nativeFocused?.windowId != lastKnownNativeFocusedWindowId {
-        if let nativeFocused, isFocusHandedOverByClose(nativeFocused, closed: lastClosedFocusedWindow) {
+        if let nativeFocused, isPulledOffHeldWorkspace(nativeFocused, hold: workspaceFocusHold) {
             // Keep the workspace, and key its window so keystrokes don't go to the parked one
             globalFocus.windowOrNil?.nativeFocus()
         } else if let nativeFocused, !isActivationArtifact(nativeFocused) {
@@ -45,27 +45,37 @@ func isNativeFocusReadingStale(frontmostPidBefore: pid_t?, frontmostPidAfter: pi
     }
 }
 
-/// The focused window that closed last: its app, its workspace and when (see isFocusHandedOverByClose)
-struct ClosedFocusedWindow: Equatable {
-    let pid: pid_t
+/// A window closing never changes the workspace. When the focused window leaves a workspace, macOS hands
+/// focus to some other window, wherever it is: Cmd-W on a browser window keys the browser's long-lived
+/// window on another workspace, and an app that quits with its last window activates the next app. That is
+/// fallout of the close, not a request, so for a second the workspace keeps the focus, on its next window
+/// or empty, as it would after `aerospace workspace`. A command that moves focus elsewhere ends the hold
+/// (the workspace no longer matches), and so does a click.
+struct WorkspaceFocusHold: Equatable {
     let workspaceName: String
-    let date: Date
+    let since: Date
 }
 
-@MainActor var lastClosedFocusedWindow: ClosedFocusedWindow? = nil
+@MainActor var workspaceFocusHold: WorkspaceFocusHold? = nil
 
-/// Closing an app's focused window makes macOS key that app's next window, wherever it is. A browser window
-/// opened on this workspace and closed with Cmd-W hands focus to a long-lived browser window on another
-/// workspace, and adopting it takes the user there. For a second after the close, a window of the same app
-/// outside the workspace is ignored while the workspace still has a window for AeroSpace to focus.
-/// A workspace left empty still follows the app, so the user can see the window that now takes keystrokes.
-@MainActor func isFocusHandedOverByClose(_ nativeFocused: Window, closed: ClosedFocusedWindow?, now: Date = .now) -> Bool {
-    guard let closed, closed.date.distance(to: now) < 1, nativeFocused.app.pid == closed.pid else { return false }
+/// Starts the hold when the window leaving the tree is the focused, ordinary window of its workspace,
+/// whether it closed or was taken for a native tab switched away from. A native fullscreen window is left
+/// out: leaving it is a Space change the native tab check can't tell from a closed window.
+@MainActor func workspaceFocusHold(forLeaving window: Window, now: Date = .now) -> WorkspaceFocusHold? {
+    guard globalFocus.windowOrNil == window, window.parent is TilingContainer || window.parent is FloatingWindowsContainer,
+          let workspace = window.nodeWorkspace
+    else { return nil }
+    return WorkspaceFocusHold(workspaceName: workspace.name, since: now)
+}
+
+@MainActor func holdWorkspaceFocusIfFocused(leaving window: Window) {
+    if let hold = workspaceFocusHold(forLeaving: window) { workspaceFocusHold = hold }
+}
+
+@MainActor func isPulledOffHeldWorkspace(_ nativeFocused: Window, hold: WorkspaceFocusHold?, now: Date = .now) -> Bool {
+    guard let hold, hold.since.distance(to: now) < 1 else { return false }
     let focus = globalFocus
-    guard focus.workspace.name == closed.workspaceName, let window = focus.windowOrNil, window != nativeFocused else {
-        return false
-    }
-    return nativeFocused.visualWorkspace != focus.workspace
+    return focus.workspace.name == hold.workspaceName && nativeFocused.visualWorkspace != focus.workspace
 }
 
 /// Upstream PR #2280. When an app with windows on two monitors is activated, macOS may make one of

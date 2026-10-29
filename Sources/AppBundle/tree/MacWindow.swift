@@ -94,6 +94,7 @@ final class MacWindow: Window {
         guard let windowId, let window = allWindowsMap[windowId], window.macApp === macApp else { return }
         allWindowsMap.removeValue(forKey: windowId)
         if window.isBound {
+            holdWorkspaceFocusIfFocused(leaving: window)
             window.unbindFromParent()
         }
     }
@@ -104,7 +105,7 @@ final class MacWindow: Window {
         if let stale = replacingNativeTabWindowId.flatMap({ allWindowsMap[$0] }), stale.macApp === macApp,
            isWindowCloseRatherThanTabSwitch(stale: stale, focused: existing)
         {
-            // Closed the normal way, so focus stays on the workspace and window-closed is reported
+            // Closed the normal way, so window-closed is reported and focus returns to the workspace's previous window
             stale.garbageCollect(skipClosedWindowsCache: false)
             return existing
         }
@@ -156,9 +157,11 @@ final class MacWindow: Window {
     @MainActor
     func garbageCollect(skipClosedWindowsCache: Bool) {
         let wasFocused = globalFocus.windowOrNil == self
+        let focusHold = workspaceFocusHold(forLeaving: self) // Before unbinding: it needs the window's parent
         if MacWindow.allWindowsMap.removeValue(forKey: windowId) == nil {
             return
         }
+        if let focusHold { workspaceFocusHold = focusHold }
         if !skipClosedWindowsCache { cacheClosedWindowIfNeeded() }
         let parent = unbindFromParent().parent
         let deadWindowWorkspace = parent.nodeWorkspace
@@ -183,9 +186,6 @@ final class MacWindow: Window {
                         workspace: deadWindowWorkspace,
                     )
                     _ = setFocus(to: deadWindowFocus)
-                    if wasFocused {
-                        lastClosedFocusedWindow = ClosedFocusedWindow(pid: app.pid, workspaceName: deadWindowWorkspace.name, date: .now)
-                    }
                     // Guard against "Apple Reminders popup" bug: https://github.com/nikitabobko/AeroSpace/issues/201
                     if focus.windowOrNil?.app.pid != app.pid {
                         // Force focus to fix macOS annoyance with focused apps without windows.
@@ -305,11 +305,14 @@ final class MacWindow: Window {
 /// nativeTabReplacementCandidate takes a focused window that vanished from AXWindows for a native tab the app
 /// switched away from. That holds for a new tab, but when the app now focuses a window AeroSpace already manages on
 /// another workspace, the old window closed: tabs of one group share a workspace. Closing a browser window with Cmd-W
-/// keys the browser's window elsewhere, and treating it as a tab switch dropped the closed window without restoring
-/// focus on its workspace.
+/// keys the browser's window elsewhere, and treating it as a tab switch dropped the closed window without reporting
+/// window-closed or restoring focus to the workspace's previous window. Only ordinary windows: a native fullscreen
+/// window also leaves AXWindows when the user switches away from its Space, and it hasn't closed.
 @MainActor
 func isWindowCloseRatherThanTabSwitch(stale: Window, focused: Window) -> Bool {
-    guard let staleWorkspace = stale.nodeWorkspace, let focusedWorkspace = focused.nodeWorkspace else { return false }
+    guard stale.parent is TilingContainer || stale.parent is FloatingWindowsContainer,
+          let staleWorkspace = stale.nodeWorkspace, let focusedWorkspace = focused.nodeWorkspace
+    else { return false }
     return staleWorkspace != focusedWorkspace
 }
 

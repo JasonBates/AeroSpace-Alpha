@@ -43,61 +43,75 @@ final class FocusCacheTest: XCTestCase {
     }
 
     // A browser window opened here and closed with Cmd-W: macOS keys the browser's long-lived window elsewhere
-    func testClosingAWindowDoesNotFollowTheAppToAnotherWorkspace() {
-        let here = Workspace.get(byName: name)
-        let elsewhere = Workspace.get(byName: "elsewhere")
-        assertTrue(mainMonitorInfo.setVisibleWorkspace(here))
-        let remaining = TestWindow.new(id: 1, parent: here.rootTilingContainer)
-        let browser = TestWindow.new(id: 2, parent: elsewhere.rootTilingContainer)
-        assertTrue(remaining.focusWindow())
-        let closedAt = Date.now
-        let closed = ClosedFocusedWindow(pid: browser.app.pid, workspaceName: here.name, date: closedAt)
-
-        assertTrue(isFocusHandedOverByClose(browser, closed: closed, now: closedAt.addingTimeInterval(0.2)))
-        assertFalse(isFocusHandedOverByClose(browser, closed: closed, now: closedAt.addingTimeInterval(1.5)))
-        assertFalse(isFocusHandedOverByClose(browser, closed: nil, now: closedAt))
-    }
-
-    func testClosingAnotherAppsWindowLeavesFocusAlone() {
+    func testCloseKeepsTheWorkspaceWhenMacOsKeysAWindowElsewhere() {
         let here = Workspace.get(byName: name)
         assertTrue(mainMonitorInfo.setVisibleWorkspace(here))
         let remaining = TestWindow.new(id: 1, parent: here.rootTilingContainer)
         let browser = TestWindow.new(id: 2, parent: Workspace.get(byName: "elsewhere").rootTilingContainer)
         assertTrue(remaining.focusWindow())
-        let closed = ClosedFocusedWindow(pid: browser.app.pid + 1, workspaceName: here.name, date: .now)
+        let closedAt = Date.now
+        let hold = WorkspaceFocusHold(workspaceName: here.name, since: closedAt)
 
-        assertFalse(isFocusHandedOverByClose(browser, closed: closed))
+        assertTrue(isPulledOffHeldWorkspace(browser, hold: hold, now: closedAt.addingTimeInterval(0.2)))
+        assertFalse(isPulledOffHeldWorkspace(browser, hold: hold, now: closedAt.addingTimeInterval(1.5)))
+        assertFalse(isPulledOffHeldWorkspace(browser, hold: nil, now: closedAt))
     }
 
-    func testWorkspaceLeftEmptyByACloseFollowsTheApp() {
+    // The same, opened on an empty workspace: closing it leaves the workspace empty, as `aerospace workspace` would
+    func testCloseKeepsAWorkspaceItLeftEmpty() {
         let here = Workspace.get(byName: name)
         assertTrue(mainMonitorInfo.setVisibleWorkspace(here))
         assertTrue(here.focusWorkspace())
         let browser = TestWindow.new(id: 2, parent: Workspace.get(byName: "elsewhere").rootTilingContainer)
-        let closed = ClosedFocusedWindow(pid: browser.app.pid, workspaceName: here.name, date: .now)
+        let hold = WorkspaceFocusHold(workspaceName: here.name, since: .now)
 
-        assertFalse(isFocusHandedOverByClose(browser, closed: closed))
+        assertTrue(isPulledOffHeldWorkspace(browser, hold: hold))
     }
 
-    func testAppsOtherWindowOnTheSameWorkspaceIsAdopted() {
+    func testWindowOnTheHeldWorkspaceIsAdopted() {
         let here = Workspace.get(byName: name)
         assertTrue(mainMonitorInfo.setVisibleWorkspace(here))
         let remaining = TestWindow.new(id: 1, parent: here.rootTilingContainer)
         let sibling = TestWindow.new(id: 2, parent: here.rootTilingContainer)
         assertTrue(remaining.focusWindow())
-        let closed = ClosedFocusedWindow(pid: sibling.app.pid, workspaceName: here.name, date: .now)
+        let hold = WorkspaceFocusHold(workspaceName: here.name, since: .now)
 
-        assertFalse(isFocusHandedOverByClose(sibling, closed: closed))
+        assertFalse(isPulledOffHeldWorkspace(sibling, hold: hold))
     }
 
-    func testCloseOnAWorkspaceTheUserHasSinceLeftIsIgnored() {
+    // `aerospace workspace` or another command moved focus on after the close
+    func testHoldEndsWhenFocusMovesToAnotherWorkspace() {
+        let there = Workspace.get(byName: name)
+        assertTrue(mainMonitorInfo.setVisibleWorkspace(there))
+        let thereWindow = TestWindow.new(id: 1, parent: there.rootTilingContainer)
+        let browser = TestWindow.new(id: 2, parent: Workspace.get(byName: "elsewhere").rootTilingContainer)
+        assertTrue(thereWindow.focusWindow())
+        let hold = WorkspaceFocusHold(workspaceName: "closedHere", since: .now)
+
+        assertFalse(isPulledOffHeldWorkspace(browser, hold: hold))
+    }
+
+    func testFocusedWindowLeavingStartsAHoldOnItsWorkspace() {
         let here = Workspace.get(byName: name)
         assertTrue(mainMonitorInfo.setVisibleWorkspace(here))
-        let remaining = TestWindow.new(id: 1, parent: here.rootTilingContainer)
-        let browser = TestWindow.new(id: 2, parent: Workspace.get(byName: "elsewhere").rootTilingContainer)
-        assertTrue(remaining.focusWindow())
-        let closed = ClosedFocusedWindow(pid: browser.app.pid, workspaceName: "left", date: .now)
+        let tiled = TestWindow.new(id: 1, parent: here.rootTilingContainer)
+        let floating = TestWindow.new(id: 2, parent: here.floatingWindowsContainer)
+        let now = Date.now
 
-        assertFalse(isFocusHandedOverByClose(browser, closed: closed))
+        assertTrue(tiled.focusWindow())
+        assertEquals(workspaceFocusHold(forLeaving: tiled, now: now), WorkspaceFocusHold(workspaceName: here.name, since: now))
+        assertNil(workspaceFocusHold(forLeaving: floating, now: now))
+        assertTrue(floating.focusWindow())
+        assertEquals(workspaceFocusHold(forLeaving: floating, now: now), WorkspaceFocusHold(workspaceName: here.name, since: now))
+    }
+
+    // Switching away from a native fullscreen window's Space also takes it out of AXWindows
+    func testNativeFullscreenWindowLeavingStartsNoHold() {
+        let here = Workspace.get(byName: name)
+        assertTrue(mainMonitorInfo.setVisibleWorkspace(here))
+        let fullscreen = TestWindow.new(id: 1, parent: here.macOsNativeFullscreenWindowsContainer)
+        assertTrue(fullscreen.focusWindow())
+
+        assertNil(workspaceFocusHold(forLeaving: fullscreen))
     }
 }

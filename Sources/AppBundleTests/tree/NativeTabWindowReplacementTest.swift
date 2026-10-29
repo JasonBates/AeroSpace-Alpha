@@ -115,4 +115,12 @@ final class NativeTabWindowReplacementTest: XCTestCase {
 
         assertFalse(isWindowCloseRatherThanTabSwitch(stale: oldTab, focused: otherTab))
     }
+
+    // Switching away from a native fullscreen window's Space takes it out of AXWindows; it hasn't closed
+    func testNativeFullscreenWindowLeftForAnotherWorkspaceIsNotTakenForClosed() {
+        let fullscreen = TestWindow.new(id: 1, parent: Workspace.get(byName: name).macOsNativeFullscreenWindowsContainer)
+        let elsewhere = TestWindow.new(id: 2, parent: Workspace.get(byName: "elsewhere").rootTilingContainer)
+
+        assertFalse(isWindowCloseRatherThanTabSwitch(stale: fullscreen, focused: elsewhere))
+    }
 }

@@ -390,23 +390,33 @@ newer session had adopted the next app flicked AeroSpace's focus back to the
 old one. `syncFocusFromMacOs` now drops an answer when the frontmost app
 changed during the read; the race is in upstream's code as well.
 
-Closing an app's focused window makes macOS key that app's next window,
-wherever it is. A browser window opened on a workspace and closed with Cmd-W
-handed focus to a long-lived browser window on another workspace, and
-AeroSpace followed it there. #2225's `nativeTabReplacementCandidate` read the
-closed window, gone from AXWindows while the app focused another, as a native
-tab switched away from, so `getOrRegister` dropped it without the close path
-(no `window-closed` event, no focus restored on its workspace), and
-`isActivationArtifact` then found no window of the browser on a visible
-workspace. Tabs of one group share a workspace, so when the newly focused
-window is one AeroSpace already manages on another workspace, the old window
-now goes through `garbageCollect` instead (`isWindowCloseRatherThanTabSwitch`).
-`garbageCollect` records the focused window it removes
-(`lastClosedFocusedWindow`). For a second afterwards a window of the same app
-outside that workspace is ignored while the workspace still has a window, and
-AeroSpace keys that window so keystrokes do not go to the parked one
-(`isFocusHandedOverByClose`). Both are unit-tested. A workspace left empty
-still follows the app, so the window now taking keystrokes is on screen.
+A window closing never changes the workspace. When the focused window goes,
+macOS hands focus to some other window wherever it is: Cmd-W on a browser
+window keys the browser's long-lived window on another workspace, and an app
+that quits with its last window activates the next app. Upstream adopts that
+focus and switches workspace. Alpha treats it as fallout of the close. When
+the focused tiled or floating window leaves the tree, its workspace is held
+for a second (`WorkspaceFocusHold`): focus macOS reports on a window outside
+it is not adopted, and AeroSpace keys the workspace's own window instead, so
+keystrokes do not go to the parked one. A workspace the close left empty
+stays focused and empty, as after `aerospace workspace`. Any app, empty or
+populated. A command that moves focus elsewhere ends the hold, since the
+focused workspace no longer matches, and so does a click. A native
+fullscreen window starts no hold: switching away from its Space looks the
+same to AeroSpace as a close.
+
+The hold starts in both places a window can leave the tree, `garbageCollect`
+and `discardNativeTabWindow`, because #2225's `nativeTabReplacementCandidate`
+reads a closed window, gone from AXWindows while the app focuses another, as
+a native tab switched away from. Without the hold there, such a close skipped
+the close path and AeroSpace followed the browser. Tabs of one group share a
+workspace, so when the newly focused window is one AeroSpace already manages
+on another workspace, the old window now goes through `garbageCollect`
+(`isWindowCloseRatherThanTabSwitch`), which reports `window-closed` and
+returns focus to the workspace's previous window. A second window of the same
+app on the same workspace still reads as a tab switch: focus stays on the
+workspace but goes to the app's window. Telling those apart needs the tab
+group itself (`AXTabGroup`). All of it is unit-tested.
 
 With these, a rule can open a window floating, sized and centred:
 
