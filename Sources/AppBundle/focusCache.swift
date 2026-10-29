@@ -1,4 +1,25 @@
+import AppKit
+
 @MainActor private var lastKnownNativeFocusedWindowId: UInt32? = nil
+
+/// Reads the native focused window and adopts it (see updateFocusCache).
+///
+/// The read asks the frontmost app over AX, and an app that is losing focus can take ~100 ms to answer. If macOS
+/// made another app frontmost meanwhile, a later session has usually adopted that app's window already, and this
+/// stale answer would pull focus back to the app the user just left: the focus border flicks back to it, and stays
+/// there if no later session corrects it. So the answer is dropped when the frontmost app changed during the read.
+@MainActor func syncFocusFromMacOs(_ cm: CancellationMode) async throws {
+    let frontmostPidBefore = NSWorkspace.shared.frontmostApplication?.processIdentifier
+    let nativeFocused = try await getNativeFocusedWindow(cm)
+    let frontmostPidAfter = NSWorkspace.shared.frontmostApplication?.processIdentifier
+    if isNativeFocusReadingStale(frontmostPidBefore: frontmostPidBefore, frontmostPidAfter: frontmostPidAfter) { return }
+    if let nativeFocused { try await debugWindowsIfRecording(nativeFocused, cm) }
+    updateFocusCache(nativeFocused)
+}
+
+func isNativeFocusReadingStale(frontmostPidBefore: pid_t?, frontmostPidAfter: pid_t?) -> Bool {
+    frontmostPidBefore != frontmostPidAfter
+}
 
 /// The data should flow (from nativeFocused to focused) and
 ///                      (from nativeFocused to lastKnownNativeFocusedWindowId)

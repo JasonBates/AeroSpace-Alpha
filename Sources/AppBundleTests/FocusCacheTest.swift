@@ -27,6 +27,14 @@ final class FocusCacheTest: XCTestCase {
         assertFalse(isActivationArtifact(hiddenWindow))
     }
 
+    // Things answers "my window is focused" after macOS has already switched to Fantastical
+    func testReadingIsStaleWhenTheFrontmostAppChangedDuringIt() {
+        assertTrue(isNativeFocusReadingStale(frontmostPidBefore: 100, frontmostPidAfter: 200))
+        assertTrue(isNativeFocusReadingStale(frontmostPidBefore: 100, frontmostPidAfter: nil))
+        assertFalse(isNativeFocusReadingStale(frontmostPidBefore: 100, frontmostPidAfter: 100))
+        assertFalse(isNativeFocusReadingStale(frontmostPidBefore: nil, frontmostPidAfter: nil))
+    }
+
     func testVisibleWindowIsNeverAnArtifact() {
         let visible = Workspace.get(byName: name)
         assertTrue(mainMonitorInfo.setVisibleWorkspace(visible))

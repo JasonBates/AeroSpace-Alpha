@@ -58,9 +58,7 @@ func runHeavyCompleteRefreshSession(
     if !TrayMenuModel.shared.isEnabled { return }
     let res = await Result {
         try await $refreshSessionEvent.withValue(event) {
-            let nativeFocused = try await getNativeFocusedWindow(.cancellable)
-            if let nativeFocused { try await debugWindowsIfRecording(nativeFocused, .cancellable) }
-            updateFocusCache(nativeFocused)
+            try await syncFocusFromMacOs(.cancellable)
 
             if shouldLayoutWorkspaces && optimisticallyPreLayoutWorkspaces { try await layoutWorkspaces() }
 
@@ -92,9 +90,7 @@ func runLightSession<T>(
     activeRefreshTask?.cancel() // Give priority to runSession
     activeRefreshTask = nil
     return try await $refreshSessionEvent.withValue(event) {
-        let nativeFocused = try await getNativeFocusedWindow(.cancellable)
-        if let nativeFocused { try await debugWindowsIfRecording(nativeFocused, .cancellable) }
-        updateFocusCache(nativeFocused)
+        try await syncFocusFromMacOs(.cancellable)
         let focusBefore = globalFocus.windowOrNil
 
         await refreshModel_nonCancellable()
