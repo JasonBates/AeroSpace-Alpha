@@ -37,8 +37,14 @@ func isNativeFocusReadingStale(frontmostPidBefore: pid_t?, frontmostPidAfter: pi
             } else {
                 takeKeystrokesForEmptyWorkspace()
             }
-        } else if let nativeFocused, !isActivationArtifact(nativeFocused) {
-            _ = nativeFocused.focusWindow()
+        } else {
+            let aeroSpaceIsFrontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier == myPid
+            if hasFocusSettledOnHeldWorkspace(nativeFocused, hold: workspaceFocusHold, aeroSpaceIsFrontmost: aeroSpaceIsFrontmost) {
+                workspaceFocusHold = nil
+            }
+            if let nativeFocused, !isActivationArtifact(nativeFocused) {
+                _ = nativeFocused.focusWindow()
+            }
         }
         lastKnownNativeFocusedWindowId = nativeFocused?.windowId
     }
@@ -53,9 +59,10 @@ func isNativeFocusReadingStale(frontmostPidBefore: pid_t?, frontmostPidAfter: pi
 /// A window closing never changes the workspace. When the focused window leaves a workspace, macOS hands
 /// focus to some other window, wherever it is: Cmd-W on a browser window keys the browser's long-lived
 /// window on another workspace, and an app that quits with its last window activates the next app. That is
-/// fallout of the close, not a request, so for a second the workspace keeps the focus, on its next window
-/// or empty, as it would after `aerospace workspace`. A command that moves focus elsewhere ends the hold
-/// (the workspace no longer matches), and so does a click.
+/// fallout of the close, not a request, so the workspace keeps the focus, on its next window or empty, as it
+/// would after `aerospace workspace`. The hold ends once macOS's focus is back on the workspace, within
+/// milliseconds, so a Cmd-Tab straight after the close is adopted; a second is the most it lasts. A command
+/// that moves focus elsewhere ends it too (the workspace no longer matches), and so does a click.
 struct WorkspaceFocusHold: Equatable {
     let workspaceName: String
     let since: Date
@@ -84,6 +91,15 @@ struct WorkspaceFocusHold: Equatable {
 @MainActor func takeKeystrokesForEmptyWorkspace() {
     if isUnitTest || serverArgs.isReadOnly { return }
     NSRunningApplication.current.activate(options: .activateIgnoringOtherApps)
+}
+
+/// macOS reports one of the held workspace's windows, or, on a workspace the close left empty, AeroSpace itself
+/// (takeKeystrokesForEmptyWorkspace). The window macOS keyed elsewhere has been dealt with, and its app is no
+/// longer frontmost, so it cannot be reported again.
+@MainActor func hasFocusSettledOnHeldWorkspace(_ nativeFocused: Window?, hold: WorkspaceFocusHold?, aeroSpaceIsFrontmost: Bool) -> Bool {
+    guard let hold else { return false }
+    guard let nativeFocused else { return aeroSpaceIsFrontmost }
+    return nativeFocused.visualWorkspace?.name == hold.workspaceName
 }
 
 @MainActor func isPulledOffHeldWorkspace(_ nativeFocused: Window, hold: WorkspaceFocusHold?, now: Date = .now) -> Bool {

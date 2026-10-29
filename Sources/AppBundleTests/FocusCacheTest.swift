@@ -79,6 +79,28 @@ final class FocusCacheTest: XCTestCase {
         assertFalse(isPulledOffHeldWorkspace(sibling, hold: hold))
     }
 
+    // Once macOS's focus is back on the workspace, a Cmd-Tab to an app elsewhere is a request
+    func testHoldSettlesWhenMacOsFocusIsBackOnTheWorkspace() {
+        let here = Workspace.get(byName: name)
+        assertTrue(mainMonitorInfo.setVisibleWorkspace(here))
+        let remaining = TestWindow.new(id: 1, parent: here.rootTilingContainer)
+        let browser = TestWindow.new(id: 2, parent: Workspace.get(byName: "elsewhere").rootTilingContainer)
+        assertTrue(remaining.focusWindow())
+        let hold = WorkspaceFocusHold(workspaceName: here.name, since: .now)
+
+        assertTrue(hasFocusSettledOnHeldWorkspace(remaining, hold: hold, aeroSpaceIsFrontmost: false))
+        assertFalse(hasFocusSettledOnHeldWorkspace(browser, hold: hold, aeroSpaceIsFrontmost: false))
+        assertFalse(hasFocusSettledOnHeldWorkspace(remaining, hold: nil, aeroSpaceIsFrontmost: false))
+    }
+
+    // On an emptied workspace AeroSpace takes the keystrokes; an app between windows reports none and has not settled
+    func testHoldOnAnEmptiedWorkspaceSettlesWhenAeroSpaceTakesTheKeystrokes() {
+        let hold = WorkspaceFocusHold(workspaceName: name, since: .now)
+
+        assertTrue(hasFocusSettledOnHeldWorkspace(nil, hold: hold, aeroSpaceIsFrontmost: true))
+        assertFalse(hasFocusSettledOnHeldWorkspace(nil, hold: hold, aeroSpaceIsFrontmost: false))
+    }
+
     // `aerospace workspace` or another command moved focus on after the close
     func testHoldEndsWhenFocusMovesToAnotherWorkspace() {
         let there = Workspace.get(byName: name)

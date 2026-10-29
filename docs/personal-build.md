@@ -396,9 +396,12 @@ window keys the browser's long-lived window on another workspace, and an app
 that quits with its last window activates the next app. Upstream adopts that
 focus and switches workspace. Alpha treats it as fallout of the close. When
 the focused tiled or floating window leaves the tree, its workspace is held
-for a second (`WorkspaceFocusHold`): focus macOS reports on a window outside
-it is not adopted, and AeroSpace keys the workspace's own window instead, so
-keystrokes do not go to the parked one. A workspace the close left empty
+(`WorkspaceFocusHold`): focus macOS reports on a window outside it is not
+adopted, and AeroSpace keys the workspace's own window instead, so
+keystrokes do not go to the parked one. The hold ends as soon as macOS
+reports one of the workspace's windows, or AeroSpace itself on an emptied
+workspace (`hasFocusSettledOnHeldWorkspace`), which takes milliseconds, so a
+Cmd-Tab straight after the close is adopted; it lasts a second at most. A workspace the close left empty
 stays focused and empty, as after `aerospace workspace`, and AeroSpace makes
 itself the active app (`takeKeystrokesForEmptyWorkspace`). It has no window
 that can become key, so typing or a second Cmd-W goes nowhere instead of into
