@@ -253,6 +253,12 @@ unchanged except where noted.
   `Monitor` to `MonitorInfo` rename.
 - [#2201](https://github.com/nikitabobko/AeroSpace/pull/2201): restore focus
   after a transient dialog closes.
+- [#2348](https://github.com/nikitabobko/AeroSpace/pull/2348): when the last
+  floating window of a workspace closes (a Touch ID or 1Password prompt), the
+  empty floating container stayed the most recent child, so `toLiveFocus()`
+  fell back to the first window in tree order. It now skips MRU children
+  without windows (`mostRecentNonEmptyWindowRecursive`). Covers the paths
+  #2201 does not, such as workspace switches.
 - [#2225](https://github.com/nikitabobko/AeroSpace/pull/2225): a new native
   tab (Finder, Ghostty) takes its predecessor's place in the tree (issue #68).
   One line resolved by hand to keep #2220's change as well.

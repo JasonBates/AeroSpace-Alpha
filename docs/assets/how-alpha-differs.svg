@@ -30,7 +30,7 @@
   <!-- middle: pending upstream PRs -->
   <rect x="124" y="306" width="1036" height="130" rx="18" fill="#1e2948" stroke="#526087" stroke-width="2"/>
   <text x="152" y="350" font-size="24" font-weight="600" fill="#f1f3ff">Pending upstream fixes</text>
-  <text x="152" y="388" font-size="19" fill="#c8d3f8">Eighteen open upstream pull requests, merged as they are</text>
+  <text x="152" y="388" font-size="19" fill="#c8d3f8">Nineteen open upstream pull requests, merged as they are</text>
   <text x="152" y="418" font-size="19" fill="#c8d3f8">cross-monitor focus (#2179)  ·  native tabs (#2225)  ·  native full screen (#2174)  ·  native border (#2107)  ·  crash and focus fixes</text>
 
   <!-- bottom: upstream -->
