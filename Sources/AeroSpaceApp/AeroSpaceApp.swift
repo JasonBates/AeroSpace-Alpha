@@ -21,5 +21,11 @@ struct AeroSpaceApp: App {
                     openWindow(id: messageWindowId)
                 }
             }
+            .commands {
+                // AeroSpace takes the keystrokes on a workspace a close left empty (takeKeystrokesForEmptyWorkspace),
+                // where Cmd-Q or Cmd-H meant for the vanished window would quit or hide AeroSpace. Quit stays in the menu bar menu
+                CommandGroup(replacing: .appTermination) {}
+                CommandGroup(replacing: .appVisibility) {}
+            }
     }
 }

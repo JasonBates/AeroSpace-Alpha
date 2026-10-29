@@ -1,4 +1,5 @@
 import AppKit
+import Common
 
 @MainActor private var lastKnownNativeFocusedWindowId: UInt32? = nil
 
@@ -30,8 +31,12 @@ func isNativeFocusReadingStale(frontmostPidBefore: pid_t?, frontmostPidAfter: pi
     }
     if nativeFocused?.windowId != lastKnownNativeFocusedWindowId {
         if let nativeFocused, isPulledOffHeldWorkspace(nativeFocused, hold: workspaceFocusHold) {
-            // Keep the workspace, and key its window so keystrokes don't go to the parked one
-            globalFocus.windowOrNil?.nativeFocus()
+            // Keep the workspace, and take the keystrokes from the parked window macOS keyed
+            if let window = globalFocus.windowOrNil {
+                window.nativeFocus()
+            } else {
+                takeKeystrokesForEmptyWorkspace()
+            }
         } else if let nativeFocused, !isActivationArtifact(nativeFocused) {
             _ = nativeFocused.focusWindow()
         }
@@ -70,6 +75,15 @@ struct WorkspaceFocusHold: Equatable {
 
 @MainActor func holdWorkspaceFocusIfFocused(leaving window: Window) {
     if let hold = workspaceFocusHold(forLeaving: window) { workspaceFocusHold = hold }
+}
+
+/// A held workspace the close left empty has no window to give the keystrokes to, and the window macOS keyed is
+/// parked on another workspace: a second Cmd-W would close one of its tabs unseen. AeroSpace takes them itself. It
+/// has no window that can become key, and its app menu has no Quit or Hide shortcut (AeroSpaceApp), so keystrokes go
+/// nowhere until the user picks a window. AeroSpace ignores itself as the frontmost app, so its focus stays put.
+@MainActor func takeKeystrokesForEmptyWorkspace() {
+    if isUnitTest || serverArgs.isReadOnly { return }
+    NSRunningApplication.current.activate(options: .activateIgnoringOtherApps)
 }
 
 @MainActor func isPulledOffHeldWorkspace(_ nativeFocused: Window, hold: WorkspaceFocusHold?, now: Date = .now) -> Bool {
