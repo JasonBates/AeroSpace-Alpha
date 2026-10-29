@@ -118,7 +118,8 @@ inner vertical gaps shrink first, then the available content is divided into
 positive frames that remain inside the container.
 
 The starter binding `alt-0 = 'balance-sizes'` restores equal tiled splits on
-the target workspace. It also clears a lone window's width adjustment, Focus
+the target workspace (since upstream `80092f3` every tile gets the average of
+the existing weights, so a following `resize` behaves as if run alone). It also clears a lone window's width adjustment, Focus
 Mode width and height adjustments, and learned app minimum sizes, and cancels an active resize gesture so a
 queued mouse event cannot restore stale weights. Floating window frames are not
 changed.
@@ -243,8 +244,6 @@ unchanged except where noted.
   crash when a floating window moves or closes during the command.
 - [#2220](https://github.com/nikitabobko/AeroSpace/pull/2220): a window made
   floating by `on-window-detected` no longer stays at its tile position.
-- [#1944](https://github.com/nikitabobko/AeroSpace/pull/1944):
-  `move-workspace-to-monitor` chooses the replacement workspace before moving.
 - [#2299](https://github.com/nikitabobko/AeroSpace/pull/2299): a cancelled
   focus request no longer steals focus from a newer one.
 - [#2179](https://github.com/nikitabobko/AeroSpace/pull/2179): with separate
@@ -342,11 +341,34 @@ It also fixes a crash when a monitor disappears. During display
 reconfiguration, such as closing the lid with external displays attached or
 every display being briefly off, AeroSpace could ask for the workspace of a
 monitor that macOS no longer reports. The lookup retried by calling itself,
-which could never succeed, and recursed until the stack overflowed. It now
-falls back to a placeholder workspace, and the next refresh puts the monitor
-back on its real one. The fix is ported from
+which could never succeed, and recursed until the stack overflowed. Since
+upstream's October 2026 restructure the lookup lives in `Monitor.swift`
+(`toMonitorOrRearrangeMonitors`) and still recurses there, so Alpha carries
+the fix on top: a stale monitor borrows the closest live one until the next
+refresh, and `rearrangeMonitors` keeps the known monitors when every display
+is momentarily off instead of dying on the empty list. The fix is ported from
 [AeroSpace-edge](https://github.com/vitorebatista/AeroSpace-edge)
 ([PR #64](https://github.com/vitorebatista/AeroSpace-edge/pull/64)).
+
+The same restructure made workspaces tree children of their monitor, which
+changed two more things that Alpha puts back:
+
+- When a monitor disappears, upstream moves its workspaces to the main monitor
+  for good, and a monitor that comes back shows an empty stub. Alpha remembers
+  where each workspace lived (`workspaceNameToHomeMonitorPoint`) and returns
+  them, with the workspace that was visible there, when a monitor appears at
+  that point again, as the old per-workspace monitor assignment did. A
+  workspace placed explicitly in the meantime, or shown on another monitor,
+  stays where it is.
+- Each `Monitor` caches its `MonitorInfo`, and upstream refreshes the cache
+  only when the number of monitors changes, so a Dock, menu-bar or resolution
+  change laid out against the old visible rect. `gcMonitors` also refreshes
+  when a monitor's rect, visible rect, name or index changes.
+
+Upstream's garbage collection of empty workspaces also left them bound in
+their monitor's container, where a later lookup under the same name could
+find the dead object next to the live one. Alpha unbinds them as they are
+collected. `MonitorTest` covers all of this.
 
 With these, a rule can open a window floating, sized and centred:
 
@@ -367,12 +389,31 @@ signing identity and the laptop address are read from
 `~/.config/aerospace/env` (`AEROSPACE_CODESIGN_IDENTITY`, `AEROSPACE_LAPTOP`;
 template in `personal-build.env.example`), which is never committed.
 
-## After a rebase onto upstream
+## After merging upstream
+
+Alpha takes upstream `main` by merging it in, in ordered chunks when upstream
+has restructured something, so each chunk compiles and passes the tests on its
+own. It is not rebased: the twenty "Merge upstream PR" commits keep their
+hand-resolution notes, and nothing upstream is rewritten. The October 2026
+update was three merges (`23d5205`, `c419f4b`, `c736e8e`).
 
 Upstream's `.github/` carries automation for its own contribution policy: a
 workflow that closes and locks issues from anyone but its maintainers, one that
 labels every outside pull request `not-actionable`, issue and discussion
 templates that point at upstream, and a `FUNDING.yml` for upstream's sponsors.
-Alpha accepts discussions, issues and pull requests, so after each rebase delete
-those again and keep Alpha's own `pull_request_template.md`. The `build.yml` and
-`release.yml` workflows stay.
+Alpha accepts discussions, issues and pull requests, so if a merge brings those
+back, delete them again and keep Alpha's own `pull_request_template.md`. The
+`build.yml` and `release.yml` workflows stay.
+
+Other things to check after a merge:
+
+- Upstream's `.gitignore` ignores every file in the repository root by
+  default, so a new root script needs `git add -f`.
+- Run `./generate.sh` when upstream edited `docs/aerospace-*.adoc`, or
+  `./test.sh` fails on uncommitted generated files.
+- Multi-monitor tests call `setMonitorInfosForTests([...])`, which rebuilds the
+  `Monitor` tree nodes; assigning `monitorInfosForTests` alone leaves them
+  stale.
+- With only the Command Line Tools selected, the tests fail to compile
+  (`SwiftUIMacros` is missing). Run them as
+  `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./test.sh`.
