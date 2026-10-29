@@ -29,7 +29,10 @@ func isNativeFocusReadingStale(frontmostPidBefore: pid_t?, frontmostPidAfter: pi
         return
     }
     if nativeFocused?.windowId != lastKnownNativeFocusedWindowId {
-        if let nativeFocused, !isActivationArtifact(nativeFocused) {
+        if let nativeFocused, isFocusHandedOverByClose(nativeFocused, closed: lastClosedFocusedWindow) {
+            // Keep the workspace, and key its window so keystrokes don't go to the parked one
+            globalFocus.windowOrNil?.nativeFocus()
+        } else if let nativeFocused, !isActivationArtifact(nativeFocused) {
             _ = nativeFocused.focusWindow()
         }
         lastKnownNativeFocusedWindowId = nativeFocused?.windowId
@@ -40,6 +43,29 @@ func isNativeFocusReadingStale(frontmostPidBefore: pid_t?, frontmostPidAfter: pi
     if !(nativeFocused?.parent is FloatingWindowsContainer) {
         nativeFocused?.macAppUnsafe.lastNativeFocusedWindowId = nativeFocused?.windowId
     }
+}
+
+/// The focused window that closed last: its app, its workspace and when (see isFocusHandedOverByClose)
+struct ClosedFocusedWindow: Equatable {
+    let pid: pid_t
+    let workspaceName: String
+    let date: Date
+}
+
+@MainActor var lastClosedFocusedWindow: ClosedFocusedWindow? = nil
+
+/// Closing an app's focused window makes macOS key that app's next window, wherever it is. A browser window
+/// opened on this workspace and closed with Cmd-W hands focus to a long-lived browser window on another
+/// workspace, and adopting it takes the user there. For a second after the close, a window of the same app
+/// outside the workspace is ignored while the workspace still has a window for AeroSpace to focus.
+/// A workspace left empty still follows the app, so the user can see the window that now takes keystrokes.
+@MainActor func isFocusHandedOverByClose(_ nativeFocused: Window, closed: ClosedFocusedWindow?, now: Date = .now) -> Bool {
+    guard let closed, closed.date.distance(to: now) < 1, nativeFocused.app.pid == closed.pid else { return false }
+    let focus = globalFocus
+    guard focus.workspace.name == closed.workspaceName, let window = focus.windowOrNil, window != nativeFocused else {
+        return false
+    }
+    return nativeFocused.visualWorkspace != focus.workspace
 }
 
 /// Upstream PR #2280. When an app with windows on two monitors is activated, macOS may make one of

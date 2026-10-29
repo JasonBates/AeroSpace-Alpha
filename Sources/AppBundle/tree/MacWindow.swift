@@ -176,6 +176,9 @@ final class MacWindow: Window {
                         workspace: deadWindowWorkspace,
                     )
                     _ = setFocus(to: deadWindowFocus)
+                    if wasFocused {
+                        lastClosedFocusedWindow = ClosedFocusedWindow(pid: app.pid, workspaceName: deadWindowWorkspace.name, date: .now)
+                    }
                     // Guard against "Apple Reminders popup" bug: https://github.com/nikitabobko/AeroSpace/issues/201
                     if focus.windowOrNil?.app.pid != app.pid {
                         // Force focus to fix macOS annoyance with focused apps without windows.

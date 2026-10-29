@@ -388,6 +388,18 @@ newer session had adopted the next app flicked AeroSpace's focus back to the
 old one. `syncFocusFromMacOs` now drops an answer when the frontmost app
 changed during the read; the race is in upstream's code as well.
 
+Closing an app's focused window makes macOS key that app's next window,
+wherever it is. A browser window opened on a workspace and closed with Cmd-W
+handed focus to a long-lived browser window on another workspace. Once
+AeroSpace had removed the closed window, `isActivationArtifact` found no window
+of the browser on a visible workspace and adopted the other one, switching
+workspace. `garbageCollect` now records the focused window it removes
+(`lastClosedFocusedWindow`). For a second afterwards a window of the same app
+outside that workspace is ignored while the workspace still has a window, and
+AeroSpace keys that window so keystrokes do not go to the parked one
+(`isFocusHandedOverByClose`, unit-tested). A workspace left empty still
+follows the app, so the window now taking keystrokes is on screen.
+
 With these, a rule can open a window floating, sized and centred:
 
 ```toml

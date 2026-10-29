@@ -90,6 +90,7 @@ With "Displays have separate Spaces" on and an app open on two monitors, stock A
 - Closing or opening the lid, plugging a monitor in or out, or waking the Mac re-tiles straight away, and once more when macOS has settled. Upstream notices the new screens only at the next unrelated event, often a click, so the tiles can keep in-between sizes until then.
 - A cancelled focus request cannot steal focus from a newer one ([#2299](https://github.com/nikitabobko/AeroSpace/pull/2299)).
 - Focus no longer flicks back to the app you just left when that app is slow to answer AeroSpace's check of which window has focus. The race is in upstream as well.
+- Closing a window with Cmd-W keeps you on its workspace and focuses another window there. Upstream can follow macOS to the same app's next window, so closing a browser window you had just opened takes you to the workspace of a browser window you keep open elsewhere.
 - Switching workspaces on one monitor no longer silently changes the workspace on another when an app has windows on both ([#2280](https://github.com/nikitabobko/AeroSpace/pull/2280)).
 - `move --boundaries all-monitors-outer-frame --boundaries-action wrap-around-all-monitors` carries a window from the outer edge of the monitor row round to the opposite monitor ([#2319](https://github.com/nikitabobko/AeroSpace/pull/2319)).
 - `move --boundaries all-monitors-outer-frame --tile-before-monitor` gives a multi-window workspace one move to tile along the requested axis before the next move crosses to a neighboring monitor.
