@@ -29,6 +29,7 @@ final class Monitor: TreeNode, NonLeafTreeNodeObject {
 }
 
 @MainActor private func rearrangeMonitors() {
+    forgetAppliedWindowFrames()
     var newMonitorPoints = globalUnsortedMonitorInfos.grouped(by: { $0.rect.topLeftCorner }).mapValues { $0.singleOrNil().orDie() }
     // Every display can be momentarily off during reconfiguration. Keep the known monitors until macOS reports
     // screens again, instead of dropping them all and dying on the empty list below
@@ -121,6 +122,17 @@ final class Monitor: TreeNode, NonLeafTreeNodeObject {
            workspace.parent === container
         {
             _ = container.setVisibleWorkspace(workspace)
+        }
+    }
+}
+
+/// macOS moves and resizes windows itself while the screens change (a display added, removed, or off and on again).
+/// Forget what layout last applied, so that the next layout writes every tiled frame again: its redundant-write skip
+/// would otherwise leave a window wherever macOS put it whenever its tile comes out the same as before
+@MainActor func forgetAppliedWindowFrames() {
+    for workspace in Workspace.all {
+        for window in workspace.allLeafWindowsRecursive {
+            window.lastAppliedLayoutPhysicalRect = nil
         }
     }
 }

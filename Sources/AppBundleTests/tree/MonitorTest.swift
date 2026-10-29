@@ -132,6 +132,24 @@ final class MonitorTest: XCTestCase {
         assertEquals(work.visibleWorkspace, mail) // Whatever was last shown at home
     }
 
+    func testWindowMacosMovedWhileTheDisplayBlinkedIsTiledAgain() async throws {
+        let screen = testMonitor(1, Rect(topLeftX: 0, topLeftY: 0, width: 1920, height: 1080))
+        setMonitorInfosForTests([screen])
+        let workspace = screen.visibleWorkspace
+        let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
+        try await workspace.layoutWorkspace()
+        let tiled = try await window.getAxRect(.nonCancellable).orDie()
+
+        // The display goes off and on again, and macOS moves the window meanwhile
+        setMonitorInfosForTests([])
+        window.setAxFrame(CGPoint(x: 100, y: 100), CGSize(width: 800, height: 600))
+        setMonitorInfosForTests([screen])
+
+        // Its tile comes out the same as before, which used to skip the write and leave it where macOS put it
+        try await workspace.layoutWorkspace()
+        assertEquals(try await window.getAxRect(.nonCancellable), tiled)
+    }
+
     func testGarbageCollectedWorkspaceLeavesTheTree() {
         let workspace = Workspace.get(byName: "collected")
         let container = workspace.parent
