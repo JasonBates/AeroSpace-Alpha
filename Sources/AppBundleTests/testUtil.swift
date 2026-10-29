@@ -17,6 +17,7 @@ let projectRoot: URL = {
 func setUpWorkspacesForTests() {
     forgetDisplacedWorkspacesForTests()
     setMonitorInfosForTests(nil)
+    forgetDisplacedWorkspacesForTests() // Removing the previous test's monitors remembers their workspaces' homes
     // A test may make a workspace visible without focusing it (setVisibleWorkspace). setFocus returns early when the
     // focus is unchanged, so clear the visibility explicitly, or that workspace survives garbage collection
     for monitor in Monitor.all {

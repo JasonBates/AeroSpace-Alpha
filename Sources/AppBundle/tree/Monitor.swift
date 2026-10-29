@@ -91,19 +91,21 @@ final class Monitor: TreeNode, NonLeafTreeNodeObject {
     }
 
     var i = monitors.count
+    var newMonitors: [Monitor] = []
     while let monitorInfo = monitorInfos.getOrNil(atIndex: i) {
         let monitor = Monitor(monitorInfo)
         monitors.append(monitor)
+        newMonitors.append(monitor)
         pointToMonitor[monitor.info.rect.topLeftCorner] = monitor
         i += 1
     }
 
-    returnDisplacedWorkspaces()
+    returnDisplacedWorkspaces(newMonitors: newMonitors)
 }
 
 /// Upstream moves the workspaces of a vanished monitor to the main monitor for good, and a monitor that comes back
 /// shows an empty stub. Move them back instead, and show the workspace that was visible there
-@MainActor private func returnDisplacedWorkspaces() {
+@MainActor private func returnDisplacedWorkspaces(newMonitors: [Monitor]) {
     if workspaceNameToHomeMonitorPoint.isEmpty { return }
     for (point, monitor) in pointToMonitor {
         let container = monitor.getWorkspacesContainerOrCreate()
@@ -112,13 +114,21 @@ final class Monitor: TreeNode, NonLeafTreeNodeObject {
             if workspace.isVisible { continue } // Shown elsewhere meanwhile: it stays there
             _ = container.bindWorkspace(workspace)
         }
-        if let name = homeMonitorPointToVisibleWorkspaceName.removeValue(forKey: point),
+        // Only a monitor that has just appeared: one that was already there keeps showing what it showed
+        if newMonitors.contains(where: { $0 === monitor }),
+           let name = homeMonitorPointToVisibleWorkspaceName.removeValue(forKey: point),
            let workspace = Workspace.all.first(where: { $0.name == name }),
            workspace.parent === container
         {
             _ = container.setVisibleWorkspace(workspace)
         }
     }
+}
+
+/// A garbage-collected workspace is gone: a new one under the same name must not follow the old one's monitor
+@MainActor func forgetDisplacedWorkspace(named name: String) {
+    workspaceNameToHomeMonitorPoint[name] = nil
+    homeMonitorPointToVisibleWorkspaceName = homeMonitorPointToVisibleWorkspaceName.filter { $0.value != name }
 }
 
 @MainActor func forgetDisplacedWorkspacesForTests() {

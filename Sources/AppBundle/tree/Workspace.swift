@@ -72,7 +72,10 @@ final class Workspace: TreeNode, NonLeafTreeNodeObject, Hashable, Comparable {
             // A collected workspace must leave the tree too. Otherwise its WorkspacesContainer keeps a dead object
             // under a reusable name, which getVisibleWorkspaceOrCreate and getStubWorkspace would hand out next to
             // the live workspace that Workspace.get(byName:) creates under the same name
-            if !keep && workspace.parent != nil { workspace.unbindFromParent() }
+            if !keep {
+                if workspace.parent != nil { workspace.unbindFromParent() }
+                forgetDisplacedWorkspace(named: workspace.name)
+            }
             return keep
         }
     }

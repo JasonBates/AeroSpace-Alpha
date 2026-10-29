@@ -31,6 +31,7 @@ final class MonitorTest: XCTestCase {
 
         assertEquals(Monitor.all.count, 2)
         assertEquals(right.visibleWorkspace, workspace)
+        _ = CGPoint(x: 100, y: 100).monitorApproximation // Used to die on the empty list
     }
 
     func testGeometryChangeAtSameCornerRefreshesMonitorInfo() {
@@ -85,6 +86,22 @@ final class MonitorTest: XCTestCase {
         assertEquals(workspace.workspaceMonitorInfo.rect, left.rect)
         assertEquals(left.visibleWorkspace, workspace)
         assertTrue(right.visibleWorkspace != workspace)
+    }
+
+    func testRecreatedWorkspaceDoesNotFollowItsCollectedNamesake() {
+        let left = testMonitor(1, Rect(topLeftX: 0, topLeftY: 0, width: 1920, height: 1080))
+        let right = testMonitor(2, Rect(topLeftX: 1920, topLeftY: 0, width: 1920, height: 1080))
+        setMonitorInfosForTests([left, right])
+        assertTrue(right.setVisibleWorkspace(Workspace.get(byName: "w")))
+        assertTrue(right.setVisibleWorkspace(Workspace.get(byName: "other")))
+
+        setMonitorInfosForTests([left]) // "w" now remembers the right monitor as its home
+        Workspace.garbageCollectUnusedWorkspaces() // "w" is empty and invisible
+        let recreated = Workspace.get(byName: "w")
+        TestWindow.new(id: 1, parent: recreated.rootTilingContainer)
+        setMonitorInfosForTests([left, right])
+
+        assertEquals(recreated.workspaceMonitorInfo.rect, left.rect)
     }
 
     func testGarbageCollectedWorkspaceLeavesTheTree() {

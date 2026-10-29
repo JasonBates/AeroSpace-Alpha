@@ -99,7 +99,8 @@ extension CGPoint {
 
     var vectorLength: CGFloat { sqrt(x * x + y * y) }
 
-    var monitorApproximation: MonitorInfo { globalUnsortedMonitorInfos.minByOrDie { distance(toOuterFrame: $0.rect) } }
+    // mainMonitorInfo: every display can be momentarily off during reconfiguration, and it has a placeholder for that
+    var monitorApproximation: MonitorInfo { globalUnsortedMonitorInfos.minBy { distance(toOuterFrame: $0.rect) } ?? mainMonitorInfo }
 }
 
 extension CGFloat {
