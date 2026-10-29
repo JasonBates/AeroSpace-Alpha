@@ -21,7 +21,12 @@ import Foundation
         startUnixSocketServer()
         GlobalObserver.initObserver()
         Workspace.garbageCollectUnusedWorkspaces() // init workspaces
-        _ = Workspace.all.first?.focusWorkspace()
+        for monitor in Monitor.all {
+            _ = monitor.getWorkspacesContainerOrCreate().children.filterIsInstance(of: Workspace.self)
+                .sorted()
+                .first?
+                .focusWorkspace()
+        }
         await runHeavyCompleteRefreshSession(
             .startup,
             // It's important for the first initialization to be non cancellable
@@ -63,7 +68,7 @@ import Foundation
 
 @MainActor
 private func smartLayoutAtStartup() {
-    let workspace = focus.workspace
+    let workspace = globalFocus.workspace
     let root = workspace.rootTilingContainer
     switch root.children.count <= 3 {
         case true: root.layout = .tiles

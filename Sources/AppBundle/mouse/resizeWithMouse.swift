@@ -403,9 +403,9 @@ func resizeWithMouse(_ window: Window) async throws {
                 (lastAppliedLayoutRect.minX - rect.minX, lParent, 0, lOwnIndex),
                 (rect.maxX - lastAppliedLayoutRect.maxX, rParent, rOwnIndex.map { $0 + 1 }, rParent?.children.count),
             ]
-            for (diff, parent, startIndex, pastTheEndIndex) in horizontalTable {
-                if let parent, let startIndex, let pastTheEndIndex, pastTheEndIndex - startIndex > 0 && abs(diff) > 5 { // 5 pixels should be enough to fight with accumulated floating precision error
-                    let siblingDiff = diff.div(pastTheEndIndex - startIndex).orDie()
+            for (diff, parent, startIndex, untilIndex) in horizontalTable {
+                if let parent, let startIndex, let untilIndex, untilIndex - startIndex > 0 && abs(diff) > 5 { // 5 pixels should be enough to fight with accumulated floating precision error
+                    let siblingDiff = diff.div(untilIndex - startIndex).orDie()
                     let orientation = parent.orientation
 
                     window.parentsWithSelf.lazy
@@ -415,7 +415,7 @@ func resizeWithMouse(_ window: Window) async throws {
                             return parent?.orientation == orientation && parent?.layout == .tiles
                         }
                         .forEach { $0.setWeight(orientation, $0.getWeightBeforeResize(orientation) + diff) }
-                    for sibling in parent.children[startIndex ..< pastTheEndIndex] {
+                    for sibling in parent.children[startIndex ..< untilIndex] {
                         sibling.setWeight(orientation, sibling.getWeightBeforeResize(orientation) - siblingDiff)
                     }
                 }

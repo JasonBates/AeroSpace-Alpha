@@ -33,7 +33,7 @@ final class ObservedMinimumSizeTest: XCTestCase {
 
     func testAdaptiveColumnGrowsToTheAppMinimumInsteadOfOverlappingItsNeighbour() async throws {
         config.adaptiveLayout.enabled = .constant(true)
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let browser = TestWindow.new(id: 1, parent: root)
         let neighbour = TestWindow.new(id: 2, parent: root, adaptiveWeight: WEIGHT_AUTO)
@@ -64,7 +64,7 @@ final class ObservedMinimumSizeTest: XCTestCase {
 
     func testAdaptiveVerticalStackKeepsItsWidestObservedMinimum() async throws {
         config.adaptiveLayout.enabled = .constant(true)
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let browser = TestWindow.new(id: 1, parent: root)
         let stack = TilingContainer.newVTiles(parent: root, adaptiveWeight: WEIGHT_AUTO)
@@ -86,7 +86,7 @@ final class ObservedMinimumSizeTest: XCTestCase {
     }
 
     func testNormalTilesMakeRoomForAnObservedMinimumWhileItFits() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let wide = TestWindow.new(id: 1, parent: root)
         let second = TestWindow.new(id: 2, parent: root)
@@ -104,7 +104,7 @@ final class ObservedMinimumSizeTest: XCTestCase {
     }
 
     func testNormalTilesKeepTheirWeightsWhenObservedMinimumsCannotFit() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let windows = [TestWindow.new(id: 1, parent: root), TestWindow.new(id: 2, parent: root)]
         for window in windows {
@@ -119,7 +119,7 @@ final class ObservedMinimumSizeTest: XCTestCase {
     }
 
     func testStackedWindowKeepsItsObservedMinimumHeight() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         root.changeOrientation(.v)
         let top = TestWindow.new(id: 1, parent: root)
@@ -133,7 +133,7 @@ final class ObservedMinimumSizeTest: XCTestCase {
     }
 
     func testConfirmationIgnoresAFrameThatHasSinceBeenReplaced() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
         window.appMinimumSizeForTest = CGSize(width: 1200, height: 0)
@@ -143,7 +143,7 @@ final class ObservedMinimumSizeTest: XCTestCase {
     }
 
     func testBalanceSizesForgetsObservedMinimums() async {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         window.observedMinimumSize = ObservedMinimumSize(width: 900, height: 700)
         assertTrue(window.focusWindow())

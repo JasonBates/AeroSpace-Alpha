@@ -25,7 +25,7 @@ final class FocusModeCommandTest: XCTestCase {
         let source = TestFocusMonitor(x: -1920, isMain: false)
         let centre = TestFocusMonitor(x: 0, isMain: true)
         let right = TestFocusMonitor(x: 1920, isMain: false)
-        let window = TestWindow.new(id: 1, parent: focus.workspace.rootTilingContainer)
+        let window = TestWindow.new(id: 1, parent: globalFocus.workspace.rootTilingContainer)
         assertTrue(window.focusWindow())
 
         let result = await parseCommand("focus-mode --stay-on-monitor").cmdOrDie.run(.defaultEnv, .emptyStdin)
@@ -33,7 +33,7 @@ final class FocusModeCommandTest: XCTestCase {
         let mode = FocusMode.shared
         assertEquals(mode.destinationMonitor(for: source, among: [source, centre]).rect.minX, -1920)
         assertEquals(mode.destinationMonitor(for: right, among: [source, centre, right]).rect.minX, 1920)
-        let second = TestWindow.new(id: 2, parent: focus.workspace.rootTilingContainer)
+        let second = TestWindow.new(id: 2, parent: globalFocus.workspace.rootTilingContainer)
         assertTrue(second.focusWindow())
         await mode.syncWithFocus()
         assertEquals(mode.windowId, 2)
@@ -47,7 +47,7 @@ final class FocusModeCommandTest: XCTestCase {
 
     func testToggleCentresFocusedWindowAndRestoresTiles() async throws {
         config.singleWindowWidthRules = [SingleWindowWidthRule(minMonitorWidth: 0, widthPercent: 50)]
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root, adaptiveWeight: 1)
         let second = TestWindow.new(id: 2, parent: root, adaptiveWeight: 1)
@@ -81,7 +81,7 @@ final class FocusModeCommandTest: XCTestCase {
 
     func testAdaptiveToggleKeepsLoneWindowSizeAndCentre() async throws {
         config.adaptiveLayout.enabled = .constant(true)
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         assertTrue(window.focusWindow())
         try await workspace.layoutWorkspace()
@@ -98,7 +98,7 @@ final class FocusModeCommandTest: XCTestCase {
 
     func testAdaptiveFocusUsesSingleWindowBaselineWithoutChangingMultiwindowWeights() async throws {
         config.adaptiveLayout.enabled = .constant(true)
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         TestWindow.new(id: 2, parent: root)
@@ -118,7 +118,7 @@ final class FocusModeCommandTest: XCTestCase {
 
     func testAdaptiveFocusResizeOffsetsUseAdaptiveBaseAndSurviveToggle() async throws {
         config.adaptiveLayout.enabled = .constant(true)
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         assertTrue(window.focusWindow())
         try await workspace.layoutWorkspace()
@@ -153,7 +153,7 @@ final class FocusModeCommandTest: XCTestCase {
             [PerMonitorValue(description: .pattern("Adaptive")!, value: true)],
             default: false,
         )
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         assertTrue(source.setVisibleWorkspace(workspace))
         let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         assertTrue(window.focusWindow())
@@ -167,7 +167,7 @@ final class FocusModeCommandTest: XCTestCase {
     }
 
     func testFollowsFocusAndStopsOnWorkspaceSwitch() async {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let first = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         let second = TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
         assertTrue(first.focusWindow())
@@ -184,7 +184,7 @@ final class FocusModeCommandTest: XCTestCase {
     }
 
     func testRestoresFloatingWindowFrame() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let original = Rect(topLeftX: 70, topLeftY: 80, width: 500, height: 400)
         let window = TestWindow.new(id: 1, parent: workspace.floatingWindowsContainer, rect: original)
         assertTrue(window.focusWindow())
@@ -203,7 +203,7 @@ final class FocusModeCommandTest: XCTestCase {
     }
 
     func testHeightResizeCentresClampsAndRestoresTiledLayout() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let window = TestWindow.new(id: 1, parent: root)
         let other = TestWindow.new(id: 2, parent: root)
@@ -251,7 +251,7 @@ final class FocusModeCommandTest: XCTestCase {
     func testMinimumHeightFitsSmallDisplay() async {
         let monitor = TestFocusMonitor(x: 0, isMain: true, displayHeight: 540)
         setMonitorInfosForTests([monitor])
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         assertTrue(monitor.setVisibleWorkspace(workspace))
         let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         assertTrue(window.focusWindow())
@@ -263,7 +263,7 @@ final class FocusModeCommandTest: XCTestCase {
     }
 
     func testHeightResizeRestoresFloatingFrame() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let original = Rect(topLeftX: 70, topLeftY: 80, width: 500, height: 400)
         let window = TestWindow.new(id: 1, parent: workspace.floatingWindowsContainer, rect: original)
         assertTrue(window.focusWindow())
@@ -279,7 +279,7 @@ final class FocusModeCommandTest: XCTestCase {
     }
 
     func testDoesNotMoveFloatingWindowWhenItsOriginalFrameIsUnavailable() async {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let window = TestWindow.new(id: 1, parent: workspace.floatingWindowsContainer)
         assertTrue(window.focusWindow())
 

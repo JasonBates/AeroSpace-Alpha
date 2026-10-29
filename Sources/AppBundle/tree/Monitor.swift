@@ -29,7 +29,7 @@ final class Monitor: TreeNode, NonLeafTreeNodeObject {
 }
 
 @MainActor private func rearrangeMonitors() {
-    var newMonitorPoints = monitorInfos.grouped(by: { $0.rect.topLeftCorner }).mapValues { $0.singleOrNil().orDie() }
+    var newMonitorPoints = globalUnsortedMonitorInfos.grouped(by: { $0.rect.topLeftCorner }).mapValues { $0.singleOrNil().orDie() }
     // Every display can be momentarily off during reconfiguration. Keep the known monitors until macOS reports
     // screens again, instead of dropping them all and dying on the empty list below
     if newMonitorPoints.isEmpty { return }
@@ -165,7 +165,7 @@ extension MonitorInfo {
 }
 
 @MainActor func gcMonitors() {
-    let infos = monitorInfos
+    let infos = globalUnsortedMonitorInfos
     // A monitor can keep its top-left corner and still change: resolution, Dock or menu bar size. Monitor caches its
     // MonitorInfo, and layout reads visibleRect from that cache, so refresh it whenever anything differs
     let changed = pointToMonitor.count != infos.count || infos.contains { info in

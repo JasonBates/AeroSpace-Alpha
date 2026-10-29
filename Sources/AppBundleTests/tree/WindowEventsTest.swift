@@ -11,7 +11,7 @@ final class WindowEventsTest: XCTestCase {
     }
 
     func testReportsMoveBetweenWorkspaces() {
-        let window = TestWindow.new(id: 1, parent: focus.workspace.rootTilingContainer)
+        let window = TestWindow.new(id: 1, parent: globalFocus.workspace.rootTilingContainer)
         assertEquals(collectWindowMovedEvents().count, 0) // First sighting is not a move
 
         window.bind(to: Workspace.get(byName: "b").rootTilingContainer, adaptiveWeight: 1, index: INDEX_BIND_LAST)
@@ -26,21 +26,21 @@ final class WindowEventsTest: XCTestCase {
     }
 
     func testReportsMoveFromDetectionWorkspace() {
-        let window = TestWindow.new(id: 1, parent: focus.workspace.rootTilingContainer)
+        let window = TestWindow.new(id: 1, parent: globalFocus.workspace.rootTilingContainer)
         rememberWindowWorkspace(window) // As onWindowDetected does, before callbacks run
         window.bind(to: Workspace.get(byName: "b").rootTilingContainer, adaptiveWeight: 1, index: INDEX_BIND_LAST)
         assertEquals(collectWindowMovedEvents().count, 1)
     }
 
     func testIgnoresMovesWithinWorkspace() {
-        let window = TestWindow.new(id: 1, parent: focus.workspace.rootTilingContainer)
+        let window = TestWindow.new(id: 1, parent: globalFocus.workspace.rootTilingContainer)
         _ = collectWindowMovedEvents()
-        window.bind(to: focus.workspace.floatingWindowsContainer, adaptiveWeight: WEIGHT_AUTO, index: INDEX_BIND_LAST)
+        window.bind(to: globalFocus.workspace.floatingWindowsContainer, adaptiveWeight: WEIGHT_AUTO, index: INDEX_BIND_LAST)
         assertEquals(collectWindowMovedEvents().count, 0)
     }
 
     func testReportsMinimizeAndRestore() {
-        let window = TestWindow.new(id: 1, parent: focus.workspace.rootTilingContainer)
+        let window = TestWindow.new(id: 1, parent: globalFocus.workspace.rootTilingContainer)
         _ = collectWindowMovedEvents()
 
         window.bind(to: macosMinimizedWindowsContainer, adaptiveWeight: WEIGHT_AUTO, index: INDEX_BIND_LAST)
@@ -49,7 +49,7 @@ final class WindowEventsTest: XCTestCase {
         assertTrue(minimized[0].contains(#""prevWorkspace":"setUpWorkspacesForTests""#))
         assertFalse(minimized[0].contains(#""workspace":"#))
 
-        window.bind(to: focus.workspace.rootTilingContainer, adaptiveWeight: 1, index: INDEX_BIND_LAST)
+        window.bind(to: globalFocus.workspace.rootTilingContainer, adaptiveWeight: 1, index: INDEX_BIND_LAST)
         let restored = collectWindowMovedEvents().map(json)
         assertEquals(restored.count, 1)
         assertTrue(restored[0].contains(#""workspace":"setUpWorkspacesForTests""#))

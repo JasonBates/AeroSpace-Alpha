@@ -100,7 +100,7 @@ struct MoveCommand: Command {
                     targetMonitor,
                     io,
                     direction: direction,
-                    focusFollowsWindow: focus.windowOrNil == window,
+                    focusFollowsWindow: globalFocus.windowOrNil == window,
                     failIfNoop: false,
                 )
             } else {
@@ -134,7 +134,7 @@ struct MoveCommand: Command {
                 wrappedMonitor,
                 io,
                 direction: direction,
-                focusFollowsWindow: focus.windowOrNil == window,
+                focusFollowsWindow: globalFocus.windowOrNil == window,
                 failIfNoop: false,
             )
     }

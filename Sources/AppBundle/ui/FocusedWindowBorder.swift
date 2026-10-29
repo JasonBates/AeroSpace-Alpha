@@ -19,7 +19,7 @@ final class FocusedWindowBorder {
     func refresh() {
         guard !isUnitTest else { return }
         guard config.focusedWindowBorder,
-              let window = focus.windowOrNil,
+              let window = globalFocus.windowOrNil,
               window.visualWorkspace?.isVisible == true,
               isBorderable(window),
               let rect = windowServerFrame(windowId: window.windowId),

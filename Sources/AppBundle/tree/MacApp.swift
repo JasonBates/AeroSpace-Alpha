@@ -72,9 +72,7 @@ final class MacApp: AbstractApp {
         self.thread = thread
     }
 
-    @MainActor
-    @discardableResult
-    static func getOrRegister(_ nsApp: NSRunningApplication) async throws -> MacApp? {
+    @MainActor @discardableResult static func getOrRegister(_ nsApp: NSRunningApplication) async throws -> MacApp? {
         // Don't perceive any of the lock screen windows as real windows
         // Otherwise, false positive ax notifications might trigger that lead to gcWindows
         if nsApp.bundleIdentifier == lockScreenAppBundleId { return nil }
@@ -85,7 +83,7 @@ final class MacApp: AbstractApp {
         if let existing = allAppsMap[pid] { return existing }
         try checkCancellation()
         if let wip = wipPids[pid] {
-            try await wip.await()
+            try await wip.await(.cancellable)
             return allAppsMap[pid]
         }
         let wip = AwaitableOneTimeBroadcastLatch()
@@ -126,7 +124,7 @@ final class MacApp: AbstractApp {
         thread.name = "AxAppThread \(nsApp.idForDebug)"
         thread.start()
 
-        try await wip.await()
+        try await wip.await(.cancellable)
         return allAppsMap[pid]
     }
 
@@ -203,7 +201,7 @@ final class MacApp: AbstractApp {
         // key the exact window (see aeroMakeKeyWindow). The private call is bracketed by a best-effort
         // crash flag so it disables itself on next launch if it ever crashes (checkFocusPrivateApiCrashGuard).
         let shouldUsePrivateFocus = NSScreen.screensHaveSeparateSpaces &&
-            monitorInfos.count > 1 &&
+            globalUnsortedMonitorInfos.count > 1 &&
             !UserDefaults.standard.bool(forKey: privateFocusApiDisabledKey) &&
             !MacApp.isPrivateFocusDisabledForProcess
         if shouldUsePrivateFocus, aeroPrivateFocusAvailable()
@@ -234,7 +232,7 @@ final class MacApp: AbstractApp {
         // Performance optimization. If possible avoid doing AX requests
         // (important for apps which are slow at responding even such basic AX requests. E.g. Godot)
         // Beware of the macOS bug: https://github.com/nikitabobko/AeroSpace/issues/101
-        if (!NSScreen.screensHaveSeparateSpaces || monitorInfos.count == 1) &&
+        if (!NSScreen.screensHaveSeparateSpaces || globalUnsortedMonitorInfos.count == 1) &&
             (lastNativeFocusedWindowId == windowId || windowsCount == 1)
         {
             nsApp.activate(options: .activateIgnoringOtherApps)
@@ -368,43 +366,41 @@ final class MacApp: AbstractApp {
         }
     }
 
-    @MainActor
-    static func refreshAllAndGetAliveWindowIds(frontmostAppBundleId: String?) async throws -> [MacApp: MacAppRefreshResult] {
-        for (_, app) in MacApp.allAppsMap { // gc dead apps
+    @MainActor static func refreshAllAndGetAliveWindowIds(frontmostAppBundleId: String?) async throws -> [MacApp: MacAppRefreshResult] {
+        for app in MacApp.allAppsMap.values { // gc dead apps
             try checkCancellation()
             if app.nsApp.isTerminated {
                 await app.destroy()
             }
         }
-        return try await withThrowingTaskGroup(of: (pid_t, MacAppRefreshResult).self, returning: [MacApp: MacAppRefreshResult].self) { group in
-            func refreshTheApp(_ nsApp: NSRunningApplication) {
+        return try await withThrowingTaskGroup(
+            of: (MainActorRef<MacApp>, MacAppRefreshResult).self,
+            returning: [MacApp: MacAppRefreshResult].self,
+        ) { group in
+            @MainActor func refreshTheApp(_ app: MacApp) {
                 group.addTask { @Sendable @MainActor in
-                    guard let app = try await MacApp.getOrRegister(nsApp) else { return (nsApp.processIdentifier, .empty) }
-                    // app.pid might differ from nsApp.processIdentifier. See resolveRealPid
-                    return (app.pid, try await app.refreshAndGetAliveWindowIds(frontmostAppBundleId: frontmostAppBundleId))
+                    return (MainActorRef.init(app), try await app.refreshAndGetAliveWindowIds(frontmostAppBundleId: frontmostAppBundleId))
                 }
             }
             // Register new apps
             for nsApp in NSWorkspace.shared.runningApplications {
                 try checkCancellation()
-                if nsApp.activationPolicy == .regular {
-                    refreshTheApp(nsApp)
+                if nsApp.activationPolicy == .regular, let app = try await MacApp.getOrRegister(nsApp) {
+                    refreshTheApp(app)
                 }
             }
-            for (_, app) in MacApp.allAppsMap {
+            for app in MacApp.allAppsMap.values {
                 try checkCancellation()
                 // "About this Mac" window, TouchID, and a lot of other utility windows
                 // We don't monitor them actively as we do for regular apps, but if a window of one of those utility
                 // apps got focused it will end up in allAppsMap
                 if app.nsApp.activationPolicy != .regular {
-                    refreshTheApp(app.nsApp)
+                    refreshTheApp(app)
                 }
             }
             var result: [MacApp: MacAppRefreshResult] = [:]
-            for try await (pid, refreshResult) in group {
-                if let app = MacApp.allAppsMap[pid] {
-                    result[app] = refreshResult
-                }
+            for try await (macAppRef, refreshResult) in group {
+                result[macAppRef.value] = refreshResult
             }
             return result
         }
@@ -418,9 +414,8 @@ final class MacApp: AbstractApp {
         guard let thread else { return .empty }
         // Read on this actor before hopping to the dedicated AX thread, same as in getFocusedWindow.
         let staleTabCandidateId = lastNativeFocusedWindowId
-        let (alive, dead, replacement, incomplete) = try await thread.runInLoop(.cancellable) { [pid, windows, retiredNativeTabWindowIds, axApp, staleTabCandidateId] (job) -> ([UInt32], [UInt32], NativeTabWindowReplacement?, Bool) in
+        let (alive, replacement, incomplete) = try await thread.runInLoop(.cancellable) { [pid, windows, retiredNativeTabWindowIds, axApp, staleTabCandidateId] (job) -> ([UInt32], NativeTabWindowReplacement?, Bool) in
             var alive: [UInt32: AxWindow] = windows.threadGuarded
-            var dead = [UInt32: AxWindow]()
             // A timed-out enumeration doesn't mean the app has no windows. Keep the known set and
             // report the refresh as incomplete so the caller retries (upstream PR #2326)
             let (axWindows, axWindowsError) = axApp.threadGuarded.getOrError(Ax.windowsAttr)
@@ -447,9 +442,8 @@ final class MacApp: AbstractApp {
                    trackedWindowIds: Set(alive.keys),
                    isMouseButtonDown: isLeftMouseButtonDown,
                ),
-               let stale = alive.removeValue(forKey: staleTabCandidateId)
+               alive.removeValue(forKey: staleTabCandidateId) != nil
             {
-                dead[staleTabCandidateId] = stale
                 retiredIds.insert(staleTabCandidateId)
                 replacement = NativeTabWindowReplacement(
                     focusedWindowId: focusedWindowId,
@@ -460,7 +454,7 @@ final class MacApp: AbstractApp {
             // Second and third lines of defence are technically needed only to avoid potential flickering
             var windowServerWindowIds: Set<UInt32>?
             if frontmostAppBundleId != lockScreenAppBundleId {
-                let (stillAlive, newlyDead) = try alive.partition { entry in
+                alive = try alive.filter { entry in
                     try job.checkCancellation()
                     return isTrackedWindowAlive(
                         isRetiredNativeTab: retiredIds.contains(entry.key),
@@ -474,10 +468,6 @@ final class MacApp: AbstractApp {
                         },
                     )
                 }
-                alive = stillAlive
-                for (id, window) in newlyDead {
-                    dead[id] = window
-                }
             }
 
             // Once the app timed out, don't send it more AX requests in this refresh: each of them
@@ -489,7 +479,7 @@ final class MacApp: AbstractApp {
 
             windows.threadGuarded = alive
             retiredNativeTabWindowIds.threadGuarded = retiredIds
-            return (Array(alive.keys), Array(dead.keys), replacement, isAppUnresponsive)
+            return (Array(alive.keys), replacement, isAppUnresponsive)
         }
         windowsCount = alive.count
         if let replacement {
@@ -497,8 +487,11 @@ final class MacApp: AbstractApp {
             // still backgrounded would compare against the stale pre-switch id.
             lastNativeFocusedWindowId = replacement.focusedWindowId
         }
-        for windowId in dead {
-            setFrameJobs.removeValue(forKey: windowId)?.cancel()
+        let aliveSet = alive.toSet()
+        for windowId in setFrameJobs.keys {
+            if !aliveSet.contains(windowId) {
+                setFrameJobs.removeValue(forKey: windowId)?.cancel()
+            }
         }
         return MacAppRefreshResult(
             aliveWindowIds: alive,
@@ -727,4 +720,9 @@ private func resolveRealPid(_ nsApp: NSRunningApplication) -> pid_t? {
         }
     }
     return nil
+}
+
+final class MainActorRef<T>: Sendable {
+    @MainActor var value: T
+    @MainActor public init(_ value: T) { self.value = value }
 }

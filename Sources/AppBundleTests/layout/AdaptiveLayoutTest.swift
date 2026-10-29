@@ -10,7 +10,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testOneTwoAndThreeColumnFramesAndRepeatedLayout() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
 
@@ -39,7 +39,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testOneAndTwoRowFrames() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         root.changeOrientation(.v)
         let first = TestWindow.new(id: 1, parent: root)
@@ -55,7 +55,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testSingleColumnUsesTwoColumnWidthFromSecondStructuralRow() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         root.changeOrientation(.v)
 
@@ -97,7 +97,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testTwoAboveSpanningBottomUsesTwoByTwoBounds() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         root.changeOrientation(.v)
         var topLeft: Window!
@@ -119,7 +119,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testTwoByTwoAndThreeByTwoFrames() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         var first: Window!
         var second: Window!
@@ -155,7 +155,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testPendingEmptyNestedAndFloatingWindowsDoNotAffectFootprintOrReserveArea() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let active = TestWindow.new(id: 1, parent: root)
         let pendingContainer = TilingContainer.newVTiles(parent: root, adaptiveWeight: WEIGHT_AUTO)
@@ -181,7 +181,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testAccordionFootprintDoesNotChangeWithFocus() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         root.layout = .accordion
         let first = TestWindow.new(id: 1, parent: root)
@@ -200,7 +200,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testNestedUnchangedSplitSurvivesThirdColumnElsewhere() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         root.changeOrientation(.v)
         var topLeft: Window!
@@ -228,7 +228,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testExpandedGappedPairSurvivesAddingSpanningBottomAndRepeatedLayout() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         root.changeOrientation(.v)
         config.gaps.inner.horizontal = .constant(20)
@@ -265,7 +265,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testAddingThirdColumnReconcilesExpandedPairWithoutViolatingMinimums() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         let second = TestWindow.new(id: 2, parent: root)
@@ -304,7 +304,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testEnablingAndDisablingPreservesExistingSplit() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         config.adaptiveLayout.enabled = .constant(false)
         let first = TestWindow.new(id: 1, parent: root)
@@ -326,7 +326,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testKeyboardResizeUsesLiveWeightsWhenAdaptiveAreaChanges() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         TestWindow.new(id: 2, parent: root, adaptiveWeight: WEIGHT_AUTO)
@@ -343,7 +343,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testKeyboardResizeShrinksDonorToMinimumThenExpandsAndContractsWorkspace() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         let second = TestWindow.new(id: 2, parent: root)
@@ -388,7 +388,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testKeyboardResizeClampsAtScreenEdge() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         let second = TestWindow.new(id: 2, parent: root)
@@ -404,7 +404,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testChainedAdaptiveResizeCommandsUseLiveIntendedWidthBeforeLayout() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         let second = TestWindow.new(id: 2, parent: root)
@@ -426,7 +426,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testResizeInOneRowHonoursWidthRequiredByAnotherRow() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         root.changeOrientation(.v)
         var topLeft: Window!
@@ -460,7 +460,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testGrowingSmallSideOfExpandedPairContractsToMinimumFeasibleWorkspace() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         let second = TestWindow.new(id: 2, parent: root)
@@ -480,7 +480,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testThreeColumnsRedistributeEquallyAndSaturateDonors() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         let second = TestWindow.new(id: 2, parent: root)
@@ -510,7 +510,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testRepeatedResizeOnRepresentativeNestedTreeStaysFiniteAndReportsTiming() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         root.changeOrientation(.v)
         var target: Window!
@@ -555,7 +555,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testBalanceSizesContractsExpandedWorkspaceToNormalBounds() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         let second = TestWindow.new(id: 2, parent: root)
@@ -574,7 +574,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testChangedTopologyShrinkCannotCollapsePositiveChild() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         let second = TestWindow.new(id: 2, parent: root)
@@ -596,7 +596,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     func testAdaptiveBoundsKeepOuterAndInnerGapsOnOffsetMonitor() async throws {
         let monitor = AdaptiveTestMonitor(name: "DELL U3225QE", x: 2000, y: 100, isMain: true)
         setMonitorInfosForTests([monitor])
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         assertTrue(monitor.setVisibleWorkspace(workspace))
         config.gaps = Gaps(
             inner: .init(vertical: 0, horizontal: 10),
@@ -614,7 +614,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testChangedTopologyShrinkAccountsForInnerGapBeforeAChildCollapses() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         config.gaps.inner.horizontal = .constant(60)
         let first = TestWindow.new(id: 1, parent: root)
@@ -635,7 +635,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testAreaScalingReservesInnerGapForNarrowPositiveTileAndStaysStableAfterRoundTrip() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         config.adaptiveLayout.enabled = .constant(false)
         config.gaps.inner.horizontal = .constant(20)
@@ -668,7 +668,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testAreaScalingKeepsRawWeightRatioWhenInnerGapDoesNotCollapseAChild() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         config.adaptiveLayout.enabled = .constant(false)
         config.gaps.inner.horizontal = .constant(20)
@@ -687,7 +687,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testImpossibleInnerGapStillProducesFiniteWeightsAndFrames() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         config.adaptiveLayout.enabled = .constant(false)
         config.gaps.inner.horizontal = .constant(2000)
@@ -713,7 +713,7 @@ final class AdaptiveLayoutTest: XCTestCase {
             monitorWidth: 1200,
         )
         setMonitorInfosForTests([narrow])
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         assertTrue(narrow.setVisibleWorkspace(workspace))
         let windows = (1 ... 6).map { TestWindow.new(id: UInt32($0), parent: workspace.rootTilingContainer) }
 
@@ -729,7 +729,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testHorizontalAccordionIsAnOpaqueRecursiveMinimumDuringResize() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let accordion = TilingContainer(
             parent: root,
@@ -754,7 +754,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testAdaptiveLoneWindowWidthAndSmartResizeApplyOnNextLayout() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         assertTrue(window.focusWindow())
         try await workspace.layoutWorkspace()
@@ -771,7 +771,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testAdaptiveMultirowHeightResizeAppliesOnNextLayout() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         root.changeOrientation(.v)
         let first = TestWindow.new(id: 1, parent: root)
@@ -793,7 +793,7 @@ final class AdaptiveLayoutTest: XCTestCase {
                 setUpWorkspacesForTests()
                 config.adaptiveLayout.enabled = .constant(adaptiveEnabled)
                 config.gaps.inner.vertical = .constant(20)
-                let workspace = focus.workspace
+                let workspace = globalFocus.workspace
                 workspace.rootTilingContainer.changeOrientation(.v)
                 let windows = (1 ... count).map {
                     TestWindow.new(id: UInt32($0), parent: workspace.rootTilingContainer)
@@ -820,7 +820,7 @@ final class AdaptiveLayoutTest: XCTestCase {
             monitorHeight: 411,
         )
         setMonitorInfosForTests([monitor])
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         assertTrue(monitor.setVisibleWorkspace(workspace))
         config.gaps.inner.vertical = .constant(30)
         workspace.rootTilingContainer.changeOrientation(.v)
@@ -842,7 +842,7 @@ final class AdaptiveLayoutTest: XCTestCase {
             monitorHeight: 411,
         )
         setMonitorInfosForTests([monitor])
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         assertTrue(monitor.setVisibleWorkspace(workspace))
         config.gaps.inner.vertical = .constant(30)
         workspace.rootTilingContainer.changeOrientation(.v)
@@ -865,7 +865,7 @@ final class AdaptiveLayoutTest: XCTestCase {
         for lowerEdge in [true, false] {
             setUpWorkspacesForTests()
             config.adaptiveLayout.enabled = .constant(true)
-            let workspace = focus.workspace
+            let workspace = globalFocus.workspace
             workspace.rootTilingContainer.changeOrientation(.v)
             TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
             let middle = TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
@@ -891,7 +891,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testMouseVerticalGrowthStopsWhenDonorReachesFloor() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         workspace.rootTilingContainer.changeOrientation(.v)
         let top = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         let bottom = TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
@@ -913,7 +913,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testMouseVerticalGestureReversalUsesImmutableBaselineAcrossRelayout() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         workspace.rootTilingContainer.changeOrientation(.v)
         let top = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         let bottom = TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
@@ -934,7 +934,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testBalanceSizesDuringMouseGestureRefusesQueuedEventThenAllowsNewGesture() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         workspace.rootTilingContainer.changeOrientation(.v)
         let top = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         let bottom = TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
@@ -960,7 +960,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testMouseWidthResizeSurvivesAdaptiveAreaChange() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         let second = TestWindow.new(id: 2, parent: root)
@@ -984,7 +984,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testAdaptiveMouseRightEdgeUsesGestureBaselineReversesAndRestoresClampedActualFrame() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         let second = TestWindow.new(id: 2, parent: root)
@@ -1036,7 +1036,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testAdaptiveMouseLeftEdgeKeepsRightEdgeFixedThroughZeroAndReversalThenRecentres() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         let second = TestWindow.new(id: 2, parent: root)
@@ -1076,7 +1076,7 @@ final class AdaptiveLayoutTest: XCTestCase {
         for edge in [AdaptiveHorizontalResizeAnchorEdge.minX, .maxX] {
             setUpWorkspacesForTests()
             config.adaptiveLayout.enabled = .constant(true)
-            let workspace = focus.workspace
+            let workspace = globalFocus.workspace
             let root = workspace.rootTilingContainer
             let first = TestWindow.new(id: 1, parent: root)
             let middle = TestWindow.new(id: 2, parent: root)
@@ -1166,7 +1166,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testAdaptiveMouseNestedGappedTargetKeepsFixedEdgeAndNeighbourGap() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         config.gaps.inner.horizontal = .constant(20)
         var top: Window!
@@ -1194,7 +1194,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testAdaptiveMouseClampRefusalGuardRetriesOnlyAfterHorizontalInputChanges() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         TestWindow.new(id: 2, parent: root)
@@ -1234,7 +1234,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testAdaptiveMouseTopologyInvalidationDoesNotMutateNewNodeAndReleaseRestoresActualFrame() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         let second = TestWindow.new(id: 2, parent: root)
@@ -1261,7 +1261,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testAdaptiveMouseInvalidationSuppressesLaterLegacyWidthEvents() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         TestWindow.new(id: 2, parent: root)
@@ -1282,7 +1282,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testAdaptiveMouseFocusActivationSuppressesLaterGestureEvents() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         TestWindow.new(id: 2, parent: root)
@@ -1314,7 +1314,7 @@ final class AdaptiveLayoutTest: XCTestCase {
             monitorWidth: 1200,
         )
         setMonitorInfosForTests([wide, narrow])
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         assertTrue(wide.setVisibleWorkspace(workspace))
         let first = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
@@ -1347,7 +1347,7 @@ final class AdaptiveLayoutTest: XCTestCase {
             monitorWidth: 1200,
         )
         setMonitorInfosForTests([wide, narrow])
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         assertTrue(wide.setVisibleWorkspace(workspace))
         let first = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         let second = TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
@@ -1369,7 +1369,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testMouseHeightResizeUpdatesNestedVerticalDivider() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         var top: Window!
         var bottom: Window!
@@ -1393,7 +1393,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testAdaptiveMouseCornerDragKeepsHorizontalSnapshotSeparateFromVerticalResize() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         var top: Window!
         var bottom: Window!
@@ -1428,7 +1428,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testFocusModeAndFullscreenOverrideOnlyTheirLeafFrames() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         let first = TestWindow.new(id: 1, parent: root)
         TestWindow.new(id: 2, parent: root, adaptiveWeight: WEIGHT_AUTO)
@@ -1452,7 +1452,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testFocusModeResizeUsesAdaptiveBaseAndCarriesAdjustmentToLoneLayout() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         assertTrue(window.focusWindow())
         _ = await parseCommand("focus-mode --stay-on-monitor").cmdOrDie.run(.defaultEnv, .emptyStdin)
@@ -1468,7 +1468,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     }
 
     func testFocusModeExitRestoresTwoByTwoAdaptiveFramesAndWeights() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         var windows: [Window] = []
         for column in 0 ..< 2 {
@@ -1512,7 +1512,7 @@ final class AdaptiveLayoutTest: XCTestCase {
         ).config
         config.enableNormalizationFlattenContainers = false
         config.enableNormalizationOppositeOrientationForNestedContainers = false
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
 
         try await workspace.layoutWorkspace()

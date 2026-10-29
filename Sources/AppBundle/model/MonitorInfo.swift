@@ -128,12 +128,12 @@ var mainMonitorInfo: MonitorInfo {
     return LazyMonitorInfo(monitorAppKitNsScreenScreensId: screen.index + 1, isMain: true, screen.value)
 }
 
-var monitorInfos: [MonitorInfo] {
+var globalUnsortedMonitorInfos: [MonitorInfo] {
     isUnitTest
         ? monitorInfosForTests ?? [testMonitorInfo]
         : NSScreen.screens.enumerated().map { $0.element.toMonitorInfo(monitorAppKitNsScreenScreensId: $0.offset + 1) }
 }
 
-var sortedMonitorInfos: [MonitorInfo] {
-    monitorInfos.sortedBy([\.rect.minX, \.rect.minY])
+var globalSortedMonitorInfos: [MonitorInfo] {
+    globalUnsortedMonitorInfos.sortedBy([\.rect.minX, \.rect.minY])
 }

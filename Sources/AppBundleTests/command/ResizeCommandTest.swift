@@ -91,7 +91,7 @@ final class ResizeCommandTest: XCTestCase {
             }
         }
         _ = window1.focusWindow()
-        try await focus.workspace.layoutWorkspace()
+        try await globalFocus.workspace.layoutWorkspace()
 
         await parseCommand("resize height +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
         assertEquals(window1.vWeight, 639.5)
@@ -112,7 +112,7 @@ final class ResizeCommandTest: XCTestCase {
             sibling = TestWindow.new(id: 3, parent: $0, adaptiveWeight: 4)
         }
         _ = window1.focusWindow()
-        try await focus.workspace.layoutWorkspace()
+        try await globalFocus.workspace.layoutWorkspace()
         let siblingWidth = sibling.hWeight
 
         await parseCommand("resize smart +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
@@ -124,12 +124,12 @@ final class ResizeCommandTest: XCTestCase {
     }
 
     func testConsecutiveHeightCommandsUseUpdatedIntendedHeightBeforeLayout() async throws {
-        let root = focus.workspace.rootTilingContainer
+        let root = globalFocus.workspace.rootTilingContainer
         root.changeOrientation(.v)
         let first = TestWindow.new(id: 1, parent: root)
         let second = TestWindow.new(id: 2, parent: root)
         assertTrue(first.focusWindow())
-        try await focus.workspace.layoutWorkspace()
+        try await globalFocus.workspace.layoutWorkspace()
 
         _ = await parseCommand("resize height +50").cmdOrDie.run(.defaultEnv, .emptyStdin)
         _ = await parseCommand("resize height +50").cmdOrDie.run(.defaultEnv, .emptyStdin)
@@ -139,7 +139,7 @@ final class ResizeCommandTest: XCTestCase {
     }
 
     func testHeightResizeSaturatesUnequalDonorsAndRepeatedCommandsStayStable() async throws {
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
         root.changeOrientation(.v)
         let target = TestWindow.new(id: 1, parent: root)
@@ -167,7 +167,7 @@ final class ResizeCommandTest: XCTestCase {
         for adaptiveEnabled in [false, true] {
             setUpWorkspacesForTests()
             config.adaptiveLayout.enabled = .constant(adaptiveEnabled)
-            let workspace = focus.workspace
+            let workspace = globalFocus.workspace
             let root = workspace.rootTilingContainer
             root.changeOrientation(.v)
             var innerTop: Window!
@@ -202,7 +202,7 @@ final class ResizeCommandTest: XCTestCase {
         for adaptiveEnabled in [false, true] {
             setUpWorkspacesForTests()
             config.adaptiveLayout.enabled = .constant(adaptiveEnabled)
-            let workspace = focus.workspace
+            let workspace = globalFocus.workspace
             let root = workspace.rootTilingContainer
             root.changeOrientation(.v)
             var innerTop: Window!
@@ -319,7 +319,7 @@ final class ResizeCommandTest: XCTestCase {
     }
 
     func testFloatingWidthKeepsCentre() async throws {
-        let window = TestWindow.new(id: 1, parent: focus.workspace.floatingWindowsContainer, rect: Rect(topLeftX: 500, topLeftY: 300, width: 400, height: 200))
+        let window = TestWindow.new(id: 1, parent: globalFocus.workspace.floatingWindowsContainer, rect: Rect(topLeftX: 500, topLeftY: 300, width: 400, height: 200))
         assertTrue(window.focusWindow())
 
         await parseCommand("resize width +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
@@ -329,7 +329,7 @@ final class ResizeCommandTest: XCTestCase {
     }
 
     func testFloatingSmartScalesLongerSideKeepingAspectRatio() async throws {
-        let window = TestWindow.new(id: 1, parent: focus.workspace.floatingWindowsContainer, rect: Rect(topLeftX: 500, topLeftY: 300, width: 400, height: 200))
+        let window = TestWindow.new(id: 1, parent: globalFocus.workspace.floatingWindowsContainer, rect: Rect(topLeftX: 500, topLeftY: 300, width: 400, height: 200))
         assertTrue(window.focusWindow())
 
         await parseCommand("resize smart -100").cmdOrDie.run(.defaultEnv, .emptyStdin)
@@ -340,8 +340,8 @@ final class ResizeCommandTest: XCTestCase {
     }
 
     func testFloatingResizeStaysInsideMonitor() async throws {
-        let bounds = focus.workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps
-        let window = TestWindow.new(id: 1, parent: focus.workspace.floatingWindowsContainer, rect: Rect(topLeftX: bounds.topLeftX, topLeftY: bounds.topLeftY, width: 400, height: 200))
+        let bounds = globalFocus.workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps
+        let window = TestWindow.new(id: 1, parent: globalFocus.workspace.floatingWindowsContainer, rect: Rect(topLeftX: bounds.topLeftX, topLeftY: bounds.topLeftY, width: 400, height: 200))
         assertTrue(window.focusWindow())
 
         await parseCommand("resize height \(Int(bounds.height) + 1000)").cmdOrDie.run(.defaultEnv, .emptyStdin)

@@ -10,7 +10,7 @@ final class AlphaDefaultsTest: XCTestCase {
 
     func testStarterBindingsResizeFocusAndRestoreNormalTiles() async throws {
         config = defaultConfig
-        let workspace = focus.workspace
+        let workspace = globalFocus.workspace
         let first = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         assertTrue(first.focusWindow())
         try await workspace.layoutWorkspace()

@@ -40,8 +40,8 @@ final class FocusMode {
     /// Called before every layout, so focus changes and closed windows cannot leave a stale cutout.
     func syncWithFocus() async {
         guard let workspaceName else { return }
-        guard focus.workspace.name == workspaceName,
-              let window = focus.windowOrNil,
+        guard globalFocus.workspace.name == workspaceName,
+              let window = globalFocus.windowOrNil,
               window.isFloating || window.parent is TilingContainer
         else {
             stop()
@@ -82,7 +82,7 @@ final class FocusMode {
     }
 
     func baseGeometry(for workspace: Workspace) -> FocusModeBaseGeometry {
-        let monitor = destinationMonitor(for: workspace.workspaceMonitorInfo, among: monitorInfos)
+        let monitor = destinationMonitor(for: workspace.workspaceMonitorInfo, among: globalUnsortedMonitorInfos)
         let available = monitor.visibleRectPaddedByOuterGaps
         let fullHeight = available.height - 1
         let frame: Rect

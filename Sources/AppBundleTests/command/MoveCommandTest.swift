@@ -53,14 +53,14 @@ final class MoveCommandTest: XCTestCase {
             XCTAssertTrue(moved.parent === newRoot)
             assertEquals(moved.ownIndex, direction.isPositive ? 1 : 0)
             assertEquals(moved.nodeWorkspace, source)
-            assertEquals(focus.windowOrNil, moved)
+            assertEquals(globalFocus.windowOrNil, moved)
 
             let transferResult = await parseCommand(command).cmdOrDie.run(.defaultEnv, .emptyStdin)
 
             assertEquals(transferResult.exitCode.rawValue, 0)
             assertEquals(moved.nodeWorkspace, target)
-            assertEquals(focus.windowOrNil, moved)
-            assertEquals(focus.workspace, target)
+            assertEquals(globalFocus.windowOrNil, moved)
+            assertEquals(globalFocus.workspace, target)
         }
     }
 
@@ -143,7 +143,7 @@ final class MoveCommandTest: XCTestCase {
 
         assertEquals(source.rootTilingContainer.layoutDescription, .h_tiles([.window(1), .window(3)]))
         assertEquals(moved.nodeWorkspace, target)
-        assertEquals(focus.windowOrNil, moved)
+        assertEquals(globalFocus.windowOrNil, moved)
     }
 
     func testTileBeforeMonitor_doesNotChangeNoNeighborBoundaryActions() async {
@@ -155,7 +155,7 @@ final class MoveCommandTest: XCTestCase {
         ]
         for (action, expectedExitCode, expectedLayout) in cases {
             setUpWorkspacesForTests()
-            let workspace = focus.workspace
+            let workspace = globalFocus.workspace
             workspace.rootTilingContainer.apply {
                 TestWindow.new(id: 1, parent: $0)
                 assertTrue(TestWindow.new(id: 2, parent: $0).focusWindow())
@@ -217,12 +217,12 @@ final class MoveCommandTest: XCTestCase {
         var result = await parseCommand("\(command) right").cmdOrDie.run(.defaultEnv, .emptyStdin)
         assertEquals(result.exitCode.rawValue, 0)
         assertEquals(root.layoutDescription, .h_tiles([.window(3), .window(1), .window(2)]))
-        assertEquals(focus.windowOrNil?.windowId, 3)
+        assertEquals(globalFocus.windowOrNil?.windowId, 3)
 
         result = await parseCommand("\(command) left").cmdOrDie.run(.defaultEnv, .emptyStdin)
         assertEquals(result.exitCode.rawValue, 0)
         assertEquals(root.layoutDescription, .h_tiles([.window(1), .window(2), .window(3)]))
-        assertEquals(focus.windowOrNil?.windowId, 3)
+        assertEquals(globalFocus.windowOrNil?.windowId, 3)
     }
 
     func testWrapAroundAllMonitors_onSingleMonitorWithOppositeRootOrientation() async {
@@ -246,7 +246,7 @@ final class MoveCommandTest: XCTestCase {
                 ]),
             ]),
         )
-        assertEquals(focus.windowOrNil?.windowId, 1)
+        assertEquals(globalFocus.windowOrNil?.windowId, 1)
     }
 
     func testWrapAroundAllMonitors_acrossTwoMonitors() async {
@@ -272,8 +272,8 @@ final class MoveCommandTest: XCTestCase {
         assertEquals(result.exitCode.rawValue, 0)
         assertEquals(leftWorkspace.rootTilingContainer.layoutDescription, .h_tiles([.window(4), .window(1), .window(2)]))
         assertEquals(rightWorkspace.rootTilingContainer.layoutDescription, .h_tiles([.window(3)]))
-        assertEquals(focus.windowOrNil?.windowId, 4)
-        assertEquals(focus.workspace, leftWorkspace)
+        assertEquals(globalFocus.windowOrNil?.windowId, 4)
+        assertEquals(globalFocus.workspace, leftWorkspace)
 
         let reverseResult = await parseCommand(
             "move --boundaries all-monitors-outer-frame --boundaries-action wrap-around-all-monitors left",
@@ -282,8 +282,8 @@ final class MoveCommandTest: XCTestCase {
         assertEquals(reverseResult.exitCode.rawValue, 0)
         assertEquals(leftWorkspace.rootTilingContainer.layoutDescription, .h_tiles([.window(1), .window(2)]))
         assertEquals(rightWorkspace.rootTilingContainer.layoutDescription, .h_tiles([.window(3), .window(4)]))
-        assertEquals(focus.windowOrNil?.windowId, 4)
-        assertEquals(focus.workspace, rightWorkspace)
+        assertEquals(globalFocus.windowOrNil?.windowId, 4)
+        assertEquals(globalFocus.workspace, rightWorkspace)
     }
 
     func testWrapAroundAllMonitors_usesSameMonitorAsFocus() async {
@@ -315,15 +315,15 @@ final class MoveCommandTest: XCTestCase {
                 let options = "--boundaries all-monitors-outer-frame --boundaries-action wrap-around-all-monitors \(direction.rawValue)"
                 let focusResult = await parseCommand("focus \(options)").cmdOrDie.run(.defaultEnv, .emptyStdin)
                 assertEquals(focusResult.exitCode.rawValue, 0)
-                let focusWorkspace = focus.workspace
+                let focusWorkspace = globalFocus.workspace
                 assertEquals(focusWorkspace, workspaces[expectedIndex])
 
                 assertEquals(sourceWindow.focusWindow(), true)
                 let moveResult = await parseCommand("move \(options)").cmdOrDie.run(.defaultEnv, .emptyStdin)
                 assertEquals(moveResult.exitCode.rawValue, 0)
                 assertEquals(sourceWindow.nodeWorkspace, focusWorkspace)
-                assertEquals(focus.workspace, focusWorkspace)
-                assertEquals(focus.windowOrNil?.windowId, sourceWindow.windowId)
+                assertEquals(globalFocus.workspace, focusWorkspace)
+                assertEquals(globalFocus.windowOrNil?.windowId, sourceWindow.windowId)
             }
         }
     }
@@ -347,8 +347,8 @@ final class MoveCommandTest: XCTestCase {
         assertEquals(result.exitCode.rawValue, 0)
         assertEquals(leftWorkspace.rootTilingContainer.layoutDescription, .h_tiles([.window(2), .window(1)]))
         assertEquals(rightWorkspace.rootTilingContainer.layoutDescription, .h_tiles([]))
-        assertEquals(focus.windowOrNil?.windowId, 1)
-        assertEquals(focus.workspace, leftWorkspace)
+        assertEquals(globalFocus.windowOrNil?.windowId, 1)
+        assertEquals(globalFocus.workspace, leftWorkspace)
     }
 
     func testParseFloatingPixels() {
@@ -683,7 +683,7 @@ final class MoveCommandTest: XCTestCase {
                 .window(2),
             ]),
         )
-        assertEquals(focus.windowOrNil?.windowId, 2)
+        assertEquals(globalFocus.windowOrNil?.windowId, 2)
     }
 
     func testMoveOutWithNormalization_left() async {
@@ -702,7 +702,7 @@ final class MoveCommandTest: XCTestCase {
                 .window(2),
             ]),
         )
-        assertEquals(focus.windowOrNil?.windowId, 1)
+        assertEquals(globalFocus.windowOrNil?.windowId, 1)
     }
 }
 
