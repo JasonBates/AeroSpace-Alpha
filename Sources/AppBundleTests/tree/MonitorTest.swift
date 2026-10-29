@@ -104,6 +104,34 @@ final class MonitorTest: XCTestCase {
         assertEquals(recreated.workspaceMonitorInfo.rect, left.rect)
     }
 
+    func testClamshellDayKeepsEveryWorkspace() {
+        // Lid closed at work: the external monitor is the only screen
+        let work = testMonitor(1, Rect(topLeftX: 0, topLeftY: 0, width: 3840, height: 2160))
+        setMonitorInfosForTests([work])
+        let mail = Workspace.get(byName: "mail")
+        let code = Workspace.get(byName: "code")
+        TestWindow.new(id: 1, parent: mail.rootTilingContainer)
+        TestWindow.new(id: 2, parent: code.rootTilingContainer)
+        TestWindow.new(id: 3, parent: code.rootTilingContainer)
+        assertTrue(work.setVisibleWorkspace(mail))
+        assertTrue(work.setVisibleWorkspace(code))
+
+        setMonitorInfosForTests([]) // Unplugged with the lid closed: no screen at all, the Mac sleeps
+
+        let builtIn = testMonitor(2, Rect(topLeftX: 0, topLeftY: 0, width: 1512, height: 982))
+        setMonitorInfosForTests([builtIn]) // At home with the lid open
+        assertEquals(mail.workspaceMonitorInfo.rect, builtIn.rect)
+        assertEquals(code.workspaceMonitorInfo.rect, builtIn.rect)
+        assertTrue(builtIn.setVisibleWorkspace(mail))
+
+        setMonitorInfosForTests([work]) // Back at work, lid closed, monitor plugged in
+        assertEquals(Monitor.all.count, 1)
+        assertEquals(mail.workspaceMonitorInfo.rect, work.rect)
+        assertEquals(code.workspaceMonitorInfo.rect, work.rect)
+        assertEquals(code.rootTilingContainer.children.count, 2)
+        assertEquals(work.visibleWorkspace, mail) // Whatever was last shown at home
+    }
+
     func testGarbageCollectedWorkspaceLeavesTheTree() {
         let workspace = Workspace.get(byName: "collected")
         let container = workspace.parent
