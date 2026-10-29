@@ -99,4 +99,20 @@ final class NativeTabWindowReplacementTest: XCTestCase {
     func testNewWindowRectFetchStaysCancellable() {
         XCTAssertEqual(nativeTabReplacementCancellationMode(replacingNativeTabWindowId: nil), .cancellable)
     }
+
+    // Cmd-W on a browser window: the browser keys its long-lived window on another workspace
+    func testAppFocusingItsWindowOnAnotherWorkspaceMeansTheOldWindowClosed() {
+        let closed = TestWindow.new(id: 1, parent: Workspace.get(byName: name).rootTilingContainer)
+        let elsewhere = TestWindow.new(id: 2, parent: Workspace.get(byName: "elsewhere").rootTilingContainer)
+
+        assertTrue(isWindowCloseRatherThanTabSwitch(stale: closed, focused: elsewhere))
+    }
+
+    func testAppFocusingAnotherWindowOnTheSameWorkspaceMayBeATabSwitch() {
+        let workspace = Workspace.get(byName: name)
+        let oldTab = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
+        let otherTab = TestWindow.new(id: 2, parent: workspace.floatingWindowsContainer)
+
+        assertFalse(isWindowCloseRatherThanTabSwitch(stale: oldTab, focused: otherTab))
+    }
 }

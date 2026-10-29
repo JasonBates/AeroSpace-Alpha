@@ -260,7 +260,9 @@ unchanged except where noted.
   #2201 does not, such as workspace switches.
 - [#2225](https://github.com/nikitabobko/AeroSpace/pull/2225): a new native
   tab (Finder, Ghostty) takes its predecessor's place in the tree (issue #68).
-  One line resolved by hand to keep #2220's change as well.
+  One line resolved by hand to keep #2220's change as well. Narrowed so that a
+  window closing is not taken for a tab switch (see the Cmd-W paragraph under
+  Further additions).
 - [#2174](https://github.com/nikitabobko/AeroSpace/pull/2174): a window
   returns to its place in the layout after macOS native full screen.
 - [#2317](https://github.com/nikitabobko/AeroSpace/pull/2317): the windows of
@@ -390,15 +392,21 @@ changed during the read; the race is in upstream's code as well.
 
 Closing an app's focused window makes macOS key that app's next window,
 wherever it is. A browser window opened on a workspace and closed with Cmd-W
-handed focus to a long-lived browser window on another workspace. Once
-AeroSpace had removed the closed window, `isActivationArtifact` found no window
-of the browser on a visible workspace and adopted the other one, switching
-workspace. `garbageCollect` now records the focused window it removes
+handed focus to a long-lived browser window on another workspace, and
+AeroSpace followed it there. #2225's `nativeTabReplacementCandidate` read the
+closed window, gone from AXWindows while the app focused another, as a native
+tab switched away from, so `getOrRegister` dropped it without the close path
+(no `window-closed` event, no focus restored on its workspace), and
+`isActivationArtifact` then found no window of the browser on a visible
+workspace. Tabs of one group share a workspace, so when the newly focused
+window is one AeroSpace already manages on another workspace, the old window
+now goes through `garbageCollect` instead (`isWindowCloseRatherThanTabSwitch`).
+`garbageCollect` records the focused window it removes
 (`lastClosedFocusedWindow`). For a second afterwards a window of the same app
 outside that workspace is ignored while the workspace still has a window, and
 AeroSpace keys that window so keystrokes do not go to the parked one
-(`isFocusHandedOverByClose`, unit-tested). A workspace left empty still
-follows the app, so the window now taking keystrokes is on screen.
+(`isFocusHandedOverByClose`). Both are unit-tested. A workspace left empty
+still follows the app, so the window now taking keystrokes is on screen.
 
 With these, a rule can open a window floating, sized and centred:
 

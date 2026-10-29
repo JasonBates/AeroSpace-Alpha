@@ -101,6 +101,13 @@ final class MacWindow: Window {
     @MainActor
     private static func existingWindowDiscardingStaleReplacement(windowId: UInt32, macApp: MacApp, replacingNativeTabWindowId: UInt32?) -> MacWindow? {
         guard let existing = allWindowsMap[windowId] else { return nil }
+        if let stale = replacingNativeTabWindowId.flatMap({ allWindowsMap[$0] }), stale.macApp === macApp,
+           isWindowCloseRatherThanTabSwitch(stale: stale, focused: existing)
+        {
+            // Closed the normal way, so focus stays on the workspace and window-closed is reported
+            stale.garbageCollect(skipClosedWindowsCache: false)
+            return existing
+        }
         discardNativeTabWindow(replacingNativeTabWindowId, from: macApp)
         return existing
     }
@@ -293,6 +300,17 @@ final class MacWindow: Window {
     override func getAxRect(_ cm: CancellationMode) async throws -> Rect? {
         try await macApp.getAxRect(windowId, cm)
     }
+}
+
+/// nativeTabReplacementCandidate takes a focused window that vanished from AXWindows for a native tab the app
+/// switched away from. That holds for a new tab, but when the app now focuses a window AeroSpace already manages on
+/// another workspace, the old window closed: tabs of one group share a workspace. Closing a browser window with Cmd-W
+/// keys the browser's window elsewhere, and treating it as a tab switch dropped the closed window without restoring
+/// focus on its workspace.
+@MainActor
+func isWindowCloseRatherThanTabSwitch(stale: Window, focused: Window) -> Bool {
+    guard let staleWorkspace = stale.nodeWorkspace, let focusedWorkspace = focused.nodeWorkspace else { return false }
+    return staleWorkspace != focusedWorkspace
 }
 
 @MainActor
