@@ -420,7 +420,7 @@ func adaptiveCurrentPhysicalWidth(
     let children = adaptiveParticipatingChildren(parent)
     guard let index = children.firstIndex(where: { $0 === node }) else { return nil }
     let intendedParentWidth = children.sumOfDouble { $0.getWeight(.h) }
-    let configuredGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitor).inner.horizontal)
+    let configuredGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitorInfo).inner.horizontal)
     let gap = adaptiveEffectiveHorizontalGap(
         configuredGap: configuredGap,
         width: intendedParentWidth,
@@ -516,8 +516,8 @@ func resizeAdaptiveHorizontally(
           let targetIndex = children.firstIndex(where: { $0 === node })
     else { return nil }
 
-    let available = workspace.workspaceMonitor.visibleRectPaddedByOuterGaps
-    let configuredGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitor).inner.horizontal)
+    let available = workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps
+    let configuredGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitorInfo).inner.horizontal)
     let minimumWindowWidth = adaptiveMinimumWindowPhysicalWidth(
         availableWidth: available.width,
         config: config.adaptiveLayout,

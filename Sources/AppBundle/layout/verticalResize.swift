@@ -231,7 +231,7 @@ private func intendedVerticalAllocation(
     workspace: Workspace,
     desiredWeights: [CGFloat]? = nil,
 ) -> IntendedVerticalAllocation {
-    let configuredGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitor).inner.vertical)
+    let configuredGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitorInfo).inner.vertical)
     let plan = verticalAllocationPlan(
         children: children,
         height: height,
@@ -246,7 +246,7 @@ private func intendedVerticalAllocation(
         desired: desired,
         height: height,
         gap: plan.gap,
-        adaptiveLayoutEnabled: config.adaptiveLayout.enabled.getValue(for: workspace.workspaceMonitor),
+        adaptiveLayoutEnabled: config.adaptiveLayout.enabled.getValue(for: workspace.workspaceMonitorInfo),
     )
     return IntendedVerticalAllocation(
         plan: plan,
@@ -340,7 +340,7 @@ private func intendedPhysicalHeight(
         case .tiles:
             childHeight = height
         case .accordion where container.orientation == .v:
-            let verticalGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitor).inner.vertical)
+            let verticalGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitorInfo).inner.vertical)
             let padding = effectiveAccordionVerticalPadding(
                 container,
                 children: children,

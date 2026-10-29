@@ -32,7 +32,7 @@ final class MacWindow: Window {
             windowId,
             macApp,
             isStartup
-                ? (rect?.center.monitorApproximation ?? mainMonitorInfo).activeWorkspace
+                ? (rect?.center.monitorApproximation ?? mainMonitorInfo).visibleWorkspace
                 : focus.workspace,
             window: nil,
             .cancellable,
@@ -184,6 +184,8 @@ final class MacWindow: Window {
                     }
                 case .macosPopupWindowsContainer, // Don't switch back on popup destruction
                      .workspace, // Workspace is invalid parent for windows
+                     .monitor, // Monitor is invalid parent for windows
+                     .workspacesContainer, // WorkspacesContainer is invalid parent for windows
                      .macosMinimizedWindowsContainer: // Don't switch back on minimized windows destruction
                     break
             }
@@ -255,7 +257,7 @@ final class MacWindow: Window {
             // Just a small optimization to avoid unnecessary AX calls for non floating windows
             // Tiling windows should be unhidden with layoutRecursive anyway
             case .floatingWindow:
-                let workspaceRect = nodeWorkspace.workspaceMonitor.rect
+                let workspaceRect = nodeWorkspace.workspaceMonitorInfo.rect
                 var newX = workspaceRect.topLeftX + workspaceRect.width * prevUnhiddenProportionalPositionInsideWorkspaceRect.x
                 var newY = workspaceRect.topLeftY + workspaceRect.height * prevUnhiddenProportionalPositionInsideWorkspaceRect.y
                 // todo we probably should replace lastFloatingSize with proper floating window sizing
@@ -353,7 +355,7 @@ func runOnWindowDetected(ifConventional window: Window) async {
                 await LayoutCommand(args: LayoutCmdArgs(rawArgs: [], toggleBetween: [layout]))
                     .run(.defaultEnv.withWindowId(window.windowId), .emptyStdin)
             }
-        case .macosPopupWindowsContainer, .unbound:
+        case .macosPopupWindowsContainer, nil:
             break
     }
 }

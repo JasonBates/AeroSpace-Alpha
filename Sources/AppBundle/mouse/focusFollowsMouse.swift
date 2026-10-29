@@ -29,7 +29,7 @@ import AppKit
             if await isAxWindowUnderMouse(location) == false { return }
             try checkCancellation()
             if FocusMode.shared.containsFocusedWindow(at: location) { return }
-            let workspace = location.monitorApproximation.activeWorkspace
+            let workspace = location.monitorApproximation.visibleWorkspace
             var window: Window? = nil
             for child in workspace.floatingWindowsContainer.mruChildren {
                 try checkCancellation()

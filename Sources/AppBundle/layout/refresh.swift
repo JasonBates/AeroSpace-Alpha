@@ -140,6 +140,7 @@ func refreshModel_nonCancellable() async {
         await checkOnFocusChangedCallbacks_nonCancellable()
     } else {
         Workspace.garbageCollectUnusedWorkspaces()
+        Workspace.forceAssignWorkspaces()
         await checkOnFocusChangedCallbacks_nonCancellable()
         normalizeContainers()
         checkWindowWorkspaceChanges()
@@ -220,20 +221,20 @@ private func layoutWorkspaces() async throws {
 
     // to reduce flicker, first unhide visible workspaces, then hide invisible ones
     for monitor in monitors {
-        let workspace = monitor.activeWorkspace
+        let workspace = monitor.visibleWorkspace
         workspace.allLeafWindowsRecursive.forEach { ($0 as! MacWindow).unhideFromCorner() } // todo as!
         try await workspace.layoutWorkspace()
     }
     var coveredSpots: [HideCornerCoverSpot: Rect] = [:]
     for workspace in Workspace.all where !workspace.isVisible {
-        let spot = monitorToHideSpot[workspace.workspaceMonitor.rect.topLeftCorner]
+        let spot = monitorToHideSpot[workspace.workspaceMonitorInfo.rect.topLeftCorner]
         let windows = workspace.allLeafWindowsRecursive
         for window in windows {
             try await (window as! MacWindow).hideInCorner(spot?.corner ?? .bottomRightCorner, on: spot?.monitor) // todo as!
         }
         if config.hiddenWindowsOcclusionCover && !windows.isEmpty {
             let corner = spot?.corner ?? .bottomRightCorner
-            let monitor = spot?.monitor ?? workspace.workspaceMonitor
+            let monitor = spot?.monitor ?? workspace.workspaceMonitorInfo
             coveredSpots[HideCornerCoverSpot(monitorTopLeft: monitor.rect.topLeftCorner, corner: corner)] =
                 hideCornerCoverRect(visibleRect: monitor.visibleRect, corner: corner)
         }

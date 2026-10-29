@@ -595,9 +595,9 @@ final class AdaptiveLayoutTest: XCTestCase {
 
     func testAdaptiveBoundsKeepOuterAndInnerGapsOnOffsetMonitor() async throws {
         let monitor = AdaptiveTestMonitor(name: "DELL U3225QE", x: 2000, y: 100, isMain: true)
-        monitorInfosForTests = [monitor]
+        setMonitorInfosForTests([monitor])
         let workspace = focus.workspace
-        assertTrue(monitor.setActiveWorkspace(workspace))
+        assertTrue(monitor.setVisibleWorkspace(workspace))
         config.gaps = Gaps(
             inner: .init(vertical: 0, horizontal: 10),
             outer: .init(left: 20, bottom: 50, top: 30, right: 40),
@@ -712,9 +712,9 @@ final class AdaptiveLayoutTest: XCTestCase {
             isMain: true,
             monitorWidth: 1200,
         )
-        monitorInfosForTests = [narrow]
+        setMonitorInfosForTests([narrow])
         let workspace = focus.workspace
-        assertTrue(narrow.setActiveWorkspace(workspace))
+        assertTrue(narrow.setVisibleWorkspace(workspace))
         let windows = (1 ... 6).map { TestWindow.new(id: UInt32($0), parent: workspace.rootTilingContainer) }
 
         try await workspace.layoutWorkspace()
@@ -819,9 +819,9 @@ final class AdaptiveLayoutTest: XCTestCase {
             monitorWidth: 800,
             monitorHeight: 411,
         )
-        monitorInfosForTests = [monitor]
+        setMonitorInfosForTests([monitor])
         let workspace = focus.workspace
-        assertTrue(monitor.setActiveWorkspace(workspace))
+        assertTrue(monitor.setVisibleWorkspace(workspace))
         config.gaps.inner.vertical = .constant(30)
         workspace.rootTilingContainer.changeOrientation(.v)
         let first = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
@@ -841,9 +841,9 @@ final class AdaptiveLayoutTest: XCTestCase {
             monitorWidth: 800,
             monitorHeight: 411,
         )
-        monitorInfosForTests = [monitor]
+        setMonitorInfosForTests([monitor])
         let workspace = focus.workspace
-        assertTrue(monitor.setActiveWorkspace(workspace))
+        assertTrue(monitor.setVisibleWorkspace(workspace))
         config.gaps.inner.vertical = .constant(30)
         workspace.rootTilingContainer.changeOrientation(.v)
         let windows = (1 ... 4).map {
@@ -1313,9 +1313,9 @@ final class AdaptiveLayoutTest: XCTestCase {
             isMain: false,
             monitorWidth: 1200,
         )
-        monitorInfosForTests = [wide, narrow]
+        setMonitorInfosForTests([wide, narrow])
         let workspace = focus.workspace
-        assertTrue(wide.setActiveWorkspace(workspace))
+        assertTrue(wide.setVisibleWorkspace(workspace))
         let first = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
         try await workspace.layoutWorkspace()
@@ -1324,7 +1324,7 @@ final class AdaptiveLayoutTest: XCTestCase {
         try await resizeWithMouse(first)
         let gestureWeights = workspace.rootTilingContainer.children.map(\.hWeight)
 
-        assertTrue(narrow.setActiveWorkspace(workspace))
+        assertTrue(narrow.setVisibleWorkspace(workspace))
         first.setAxFrame(nil, CGSize(width: baseline.width + 200, height: baseline.height))
         try await resizeWithMouse(first)
         try await resizeWithMouse(first)
@@ -1346,9 +1346,9 @@ final class AdaptiveLayoutTest: XCTestCase {
             isMain: false,
             monitorWidth: 1200,
         )
-        monitorInfosForTests = [wide, narrow]
+        setMonitorInfosForTests([wide, narrow])
         let workspace = focus.workspace
-        assertTrue(wide.setActiveWorkspace(workspace))
+        assertTrue(wide.setVisibleWorkspace(workspace))
         let first = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         let second = TestWindow.new(id: 2, parent: workspace.rootTilingContainer)
         assertTrue(first.focusWindow())
@@ -1357,7 +1357,7 @@ final class AdaptiveLayoutTest: XCTestCase {
         try await workspace.layoutWorkspace()
         assertRect(workspace.lastAppliedLayoutVirtualRect, x: 0, y: 54, width: 1920, height: 972)
 
-        assertTrue(narrow.setActiveWorkspace(workspace))
+        assertTrue(narrow.setVisibleWorkspace(workspace))
         try await workspace.layoutWorkspace()
 
         assertRect(workspace.lastAppliedLayoutVirtualRect, x: 1920, y: 54, width: 1200, height: 972)
@@ -1502,7 +1502,7 @@ final class AdaptiveLayoutTest: XCTestCase {
     func testPerMonitorEnablementAndLegacyWidthPrecedence() async throws {
         let builtIn = AdaptiveTestMonitor(name: "Built-in Retina Display", x: 0, isMain: true)
         let dell = AdaptiveTestMonitor(name: "DELL U3225QE", x: 1920, isMain: false)
-        monitorInfosForTests = [builtIn, dell]
+        setMonitorInfosForTests([builtIn, dell])
         config = parseConfig(
             """
             single-window-width-rules = [{ min-monitor-width = 0, width-percent = 50 }]
@@ -1518,7 +1518,7 @@ final class AdaptiveLayoutTest: XCTestCase {
         try await workspace.layoutWorkspace()
         assertRect(try await window.getAxRect(.nonCancellable), x: 480, y: 0, width: 960, height: 1079)
 
-        assertTrue(dell.setActiveWorkspace(workspace))
+        assertTrue(dell.setVisibleWorkspace(workspace))
         try await workspace.layoutWorkspace()
         assertRect(try await window.getAxRect(.nonCancellable), x: 2563.2, y: 54, width: 633.6, height: 971)
     }

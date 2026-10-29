@@ -8,7 +8,7 @@ extension Workspace {
                 let orientation: Orientation = switch config.defaultRootContainerOrientation {
                     case .horizontal: .h
                     case .vertical: .v
-                    case .auto: workspaceMonitor.then { $0.width >= $0.height } ? .h : .v
+                    case .auto: workspaceMonitorInfo.then { $0.width >= $0.height } ? .h : .v
                 }
                 return TilingContainer(parent: self, adaptiveWeight: 1, orientation, config.defaultRootContainerLayout, index: INDEX_BIND_LAST)
             case 1:
@@ -51,7 +51,15 @@ extension Workspace {
         }
     }
 
-    @MainActor var forceAssignedMonitor: MonitorInfo? {
+    @MainActor var isVisible: Bool { (parent as? WorkspacesContainer)?.visibleWorkspaceNameOrStale == self.name }
+
+    @MainActor var workspaceMonitorInfo: MonitorInfo { // todo revisit this API (rename)
+        // A workspace that garbageCollectUnusedWorkspaces detached can still be referenced by a layout pass that
+        // was suspended at the time
+        return nodeMonitorInfo ?? mainMonitorInfo
+    }
+
+    @MainActor var forceAssignedMonitorInfo: MonitorInfo? {
         guard let monitorDescriptions = config.workspaceToMonitorForceAssignment[name] else { return nil }
         let sortedMonitors = sortedMonitorInfos
         return monitorDescriptions.lazy

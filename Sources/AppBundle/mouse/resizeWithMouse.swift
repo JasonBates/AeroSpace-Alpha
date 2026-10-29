@@ -114,12 +114,12 @@ private var verticalMouseResizeState: VerticalMouseResizeState?
 private func adaptiveMouseResizePolicy(_ workspace: Workspace) -> AdaptiveMouseResizePolicy {
     let adaptive = config.adaptiveLayout
     return AdaptiveMouseResizePolicy(
-        enabled: adaptive.enabled.getValue(for: workspace.workspaceMonitor),
+        enabled: adaptive.enabled.getValue(for: workspace.workspaceMonitorInfo),
         oneColumnWidthPercent: adaptive.oneColumnWidthPercent,
         twoColumnWidthPercent: adaptive.twoColumnWidthPercent,
         singleRowHeightPercent: adaptive.singleRowHeightPercent,
         minimumWindowWidthPercent: adaptive.minimumWindowWidthPercent,
-        horizontalGap: CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitor).inner.horizontal),
+        horizontalGap: CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitorInfo).inner.horizontal),
         accordionPadding: config.accordionPadding,
     )
 }
@@ -198,13 +198,13 @@ func adaptiveMouseAnchoredWorkspaceRect(
     guard let state = adaptiveMouseResizeState,
           currentlyManipulatedWithMouseWindowId == state.windowId,
           state.workspace == ObjectIdentifier(workspace),
-          state.monitorId == workspace.workspaceMonitor.monitorAppKitNsScreenScreensId,
+          state.monitorId == workspace.workspaceMonitorInfo.monitorAppKitNsScreenScreensId,
           state.available == available,
           state.policy.matches(adaptiveMouseResizePolicy(workspace)),
           adaptiveTopologyMatches(state.topology, adaptiveTopologySignature(workspace.rootTilingContainer))
     else { return centered }
 
-    let horizontalGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitor).inner.horizontal)
+    let horizontalGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitorInfo).inner.horizontal)
     guard let targetRect = adaptiveRelativeHorizontalRect(
         of: state.target,
         in: workspace.rootTilingContainer,
@@ -225,7 +225,7 @@ private let adaptiveWeightBeforeResizeWithMouseKey = TreeNodeUserDataKey<CGFloat
 func resizeWithMouse(_ window: Window) async throws {
     resetClosedWindowsCache()
     switch window.windowParentCases {
-        case .unbound: return
+        case nil: return
         case .floatingWindowsContainer, .macosMinimizedWindowsContainer, .macosFullscreenWindowsContainer,
              .macosPopupWindowsContainer, .macosHiddenAppsWindowsContainer:
             return // Nothing to do for floating, or unconventional windows
@@ -276,11 +276,11 @@ func resizeWithMouse(_ window: Window) async throws {
                             let baselineWorkspaceFrame = workspace.lastAppliedLayoutPhysicalRect,
                             adaptiveProportionsAreInitialized(workspace.rootTilingContainer)
                         {
-                            let available = workspace.workspaceMonitor.visibleRectPaddedByOuterGaps
+                            let available = workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps
                             adaptiveMouseResizeState = AdaptiveMouseResizeState(
                                 windowId: window.windowId,
                                 workspace: ObjectIdentifier(workspace),
-                                monitorId: workspace.workspaceMonitor.monitorAppKitNsScreenScreensId,
+                                monitorId: workspace.workspaceMonitorInfo.monitorAppKitNsScreenScreensId,
                                 available: available,
                                 policy: mousePolicy,
                                 topology: adaptiveTopologySignature(workspace.rootTilingContainer),
@@ -299,8 +299,8 @@ func resizeWithMouse(_ window: Window) async throws {
                     if let state = adaptiveMouseResizeState {
                         guard state.windowId == window.windowId,
                               state.workspace == ObjectIdentifier(workspace),
-                              state.monitorId == workspace.workspaceMonitor.monitorAppKitNsScreenScreensId,
-                              state.available == workspace.workspaceMonitor.visibleRectPaddedByOuterGaps,
+                              state.monitorId == workspace.workspaceMonitorInfo.monitorAppKitNsScreenScreensId,
+                              state.available == workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps,
                               state.policy.matches(mousePolicy),
                               adaptiveTopologyMatches(
                                   state.topology,
@@ -465,12 +465,12 @@ func resizeWithMouse(_ window: Window) async throws {
                     verticalMouseResizeState = VerticalMouseResizeState(
                         windowId: window.windowId,
                         workspace: ObjectIdentifier(workspace),
-                        monitorId: workspace.workspaceMonitor.monitorAppKitNsScreenScreensId,
-                        available: workspace.workspaceMonitor.visibleRectPaddedByOuterGaps,
+                        monitorId: workspace.workspaceMonitorInfo.monitorAppKitNsScreenScreensId,
+                        available: workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps,
                         adaptivePolicy: mousePolicy,
                         topology: adaptiveTopologySignature(workspace.rootTilingContainer),
                         minimumWindowHeight: config.minimumWindowHeight,
-                        verticalGap: CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitor).inner.vertical),
+                        verticalGap: CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitorInfo).inner.vertical),
                         accordionPadding: config.accordionPadding,
                         target: target,
                         parent: parent,
@@ -483,11 +483,11 @@ func resizeWithMouse(_ window: Window) async throws {
                 }
             }
             if let state = verticalMouseResizeState {
-                let verticalGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitor).inner.vertical)
+                let verticalGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitorInfo).inner.vertical)
                 guard state.windowId == window.windowId,
                       state.workspace == ObjectIdentifier(workspace),
-                      state.monitorId == workspace.workspaceMonitor.monitorAppKitNsScreenScreensId,
-                      state.available == workspace.workspaceMonitor.visibleRectPaddedByOuterGaps,
+                      state.monitorId == workspace.workspaceMonitorInfo.monitorAppKitNsScreenScreensId,
+                      state.available == workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps,
                       state.adaptivePolicy.matches(mousePolicy),
                       state.minimumWindowHeight == config.minimumWindowHeight,
                       state.verticalGap == verticalGap,

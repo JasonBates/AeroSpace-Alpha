@@ -148,13 +148,13 @@ final class FocusModeCommandTest: XCTestCase {
     func testDestinationMonitorControlsAdaptiveFocusGeometry() async {
         let source = TestFocusMonitor(x: -1920, isMain: false, id: 1, name: "Standard")
         let destination = TestFocusMonitor(x: 0, isMain: true, id: 2, name: "Adaptive")
-        monitorInfosForTests = [source, destination]
+        setMonitorInfosForTests([source, destination])
         config.adaptiveLayout.enabled = .perMonitor(
             [PerMonitorValue(description: .pattern("Adaptive")!, value: true)],
             default: false,
         )
         let workspace = focus.workspace
-        assertTrue(source.setActiveWorkspace(workspace))
+        assertTrue(source.setVisibleWorkspace(workspace))
         let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         assertTrue(window.focusWindow())
 
@@ -250,9 +250,9 @@ final class FocusModeCommandTest: XCTestCase {
 
     func testMinimumHeightFitsSmallDisplay() async {
         let monitor = TestFocusMonitor(x: 0, isMain: true, displayHeight: 540)
-        monitorInfosForTests = [monitor]
+        setMonitorInfosForTests([monitor])
         let workspace = focus.workspace
-        assertTrue(monitor.setActiveWorkspace(workspace))
+        assertTrue(monitor.setVisibleWorkspace(workspace))
         let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
         assertTrue(window.focusWindow())
         _ = await parseCommand("focus-mode --stay-on-monitor").cmdOrDie.run(.defaultEnv, .emptyStdin)

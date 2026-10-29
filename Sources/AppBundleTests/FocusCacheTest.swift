@@ -10,7 +10,7 @@ final class FocusCacheTest: XCTestCase {
     func testOffScreenWindowOfAVisibleAppIsAnActivationArtifact() {
         let visible = Workspace.get(byName: name)
         let hidden = Workspace.get(byName: "hidden")
-        assertTrue(mainMonitorInfo.setActiveWorkspace(visible))
+        assertTrue(mainMonitorInfo.setVisibleWorkspace(visible))
         let visibleWindow = TestWindow.new(id: 1, parent: visible.rootTilingContainer)
         let hiddenWindow = TestWindow.new(id: 2, parent: hidden.rootTilingContainer)
         assertTrue(visibleWindow.focusWindow())
@@ -21,7 +21,7 @@ final class FocusCacheTest: XCTestCase {
     func testDeliberateSwitchToAnAppWithNoVisibleWindowIsAdopted() {
         let visible = Workspace.get(byName: name)
         let hidden = Workspace.get(byName: "hidden")
-        assertTrue(mainMonitorInfo.setActiveWorkspace(visible))
+        assertTrue(mainMonitorInfo.setVisibleWorkspace(visible))
         let hiddenWindow = TestWindow.new(id: 2, parent: hidden.rootTilingContainer)
 
         assertFalse(isActivationArtifact(hiddenWindow))
@@ -29,7 +29,7 @@ final class FocusCacheTest: XCTestCase {
 
     func testVisibleWindowIsNeverAnArtifact() {
         let visible = Workspace.get(byName: name)
-        assertTrue(mainMonitorInfo.setActiveWorkspace(visible))
+        assertTrue(mainMonitorInfo.setVisibleWorkspace(visible))
         let window = TestWindow.new(id: 1, parent: visible.floatingWindowsContainer)
         assertFalse(isActivationArtifact(window))
     }

@@ -1,19 +1,20 @@
 import AppKit
+import Common
 
 extension Workspace {
     @MainActor
-    func layoutWorkspace() async throws {
+    func layoutWorkspace() async throws { // todo revisit API
         if isEffectivelyEmpty { return }
-        let rect = workspaceMonitor.visibleRectPaddedByOuterGaps
+        let rect = workspaceMonitorInfo.visibleRectPaddedByOuterGaps
         // If monitors are aligned vertically and the monitor below has smaller width, then macOS may not allow the
         // window on the upper monitor to take full width. rect.height - 1 resolves this problem
         // But I also faced this problem in monitors horizontal configuration. ¯\_(ツ)_/¯
-        let adaptiveLayoutEnabled = config.adaptiveLayout.enabled.getValue(for: workspaceMonitor)
+        let adaptiveLayoutEnabled = config.adaptiveLayout.enabled.getValue(for: workspaceMonitorInfo)
         var layoutRect = rect
         if adaptiveLayoutEnabled {
             if let footprint = rootTilingContainer.tilingFootprint {
                 layoutRect = adaptiveWorkspaceRect(available: rect, footprint: footprint, config: config.adaptiveLayout)
-                let horizontalGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspaceMonitor).inner.horizontal)
+                let horizontalGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspaceMonitorInfo).inner.horizontal)
                 let expandedWidth = adaptiveExpandedWorkspaceWidth(
                     normalWidth: layoutRect.width,
                     availableWidth: rect.width,
@@ -40,7 +41,7 @@ extension Workspace {
             }
         } else if shouldApplyAspectRatio(to: rootTilingContainer),
                   let constrainedWidth = config.singleWindowWidth(
-                      monitorWidth: workspaceMonitor.width,
+                      monitorWidth: workspaceMonitorInfo.width,
                       availableWidth: rect.width,
                       height: rect.height - 1,
                   )
@@ -94,6 +95,10 @@ extension TreeNode {
     fileprivate func layoutRecursive(_ point: CGPoint, width: CGFloat, height: CGFloat, virtual: Rect, _ context: LayoutContext) async throws {
         let physicalRect = Rect(topLeftX: point.x, topLeftY: point.y, width: width, height: height)
         switch nodeCases {
+            case .monitor(let it):
+                try await it.getWorkspacesContainerOrCreate().getVisibleWorkspaceOrCreate(parent: it)
+                    .layoutRecursive(point, width: width, height: height, virtual: virtual, context)
+            case .workspacesContainer: die()
             case .workspace(let workspace):
                 lastAppliedLayoutPhysicalRect = physicalRect
                 lastAppliedLayoutVirtualRect = virtual
@@ -105,7 +110,7 @@ extension TreeNode {
                     window.lastAppliedLayoutPhysicalRect = nil
                     window.lastAppliedLayoutVirtualRect = nil
                     if window.windowId == currentlyManipulatedWithMouseWindowId { continue } // Follows the pointer
-                    try await window.layoutFloatingWindow(context)
+                    try await window.layoutFloatingWindow(context) // todo make it parallel. Get rid of 'try await'
                 }
             case .window(let window):
                 if window.isAwaitingOnWindowDetected { break }
@@ -158,7 +163,7 @@ private struct LayoutContext {
     @MainActor
     init(_ workspace: Workspace, adaptiveLayoutEnabled: Bool) {
         self.workspace = workspace
-        self.resolvedGaps = ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitor)
+        self.resolvedGaps = ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitorInfo)
         self.adaptiveLayoutEnabled = adaptiveLayoutEnabled
     }
 }
@@ -173,12 +178,12 @@ extension Window {
         let workspace = context.workspace
         let windowRect = try await getAxRect(.cancellable) // Probably not idempotent
         let currentMonitor = windowRect?.center.monitorApproximation
-        if let currentMonitor, let windowRect, workspace != currentMonitor.activeWorkspace {
+        if let currentMonitor, let windowRect, workspace != currentMonitor.visibleWorkspace {
             let windowTopLeftCorner = windowRect.topLeftCorner
             let xProportion = (windowTopLeftCorner.x - currentMonitor.visibleRect.topLeftX) / currentMonitor.visibleRect.width
             let yProportion = (windowTopLeftCorner.y - currentMonitor.visibleRect.topLeftY) / currentMonitor.visibleRect.height
 
-            let workspaceRect = workspace.workspaceMonitor.visibleRect
+            let workspaceRect = workspace.workspaceMonitorInfo.visibleRect
             var newX = workspaceRect.topLeftX + xProportion * workspaceRect.width
             var newY = workspaceRect.topLeftY + yProportion * workspaceRect.height
 
@@ -198,8 +203,8 @@ extension Window {
     @MainActor
     fileprivate func layoutFullscreen(_ context: LayoutContext) {
         let monitorRect = noOuterGapsInFullscreen
-            ? context.workspace.workspaceMonitor.visibleRect
-            : context.workspace.workspaceMonitor.visibleRectPaddedByOuterGaps
+            ? context.workspace.workspaceMonitorInfo.visibleRect
+            : context.workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps
         setAxFrame(monitorRect.topLeftCorner, CGSize(width: monitorRect.width, height: monitorRect.height))
     }
 }
@@ -236,7 +241,7 @@ extension TilingContainer {
                 width: width,
                 horizontalGap: rawGap,
                 minimumWindowWidth: adaptiveMinimumWindowPhysicalWidth(
-                    availableWidth: context.workspace.workspaceMonitor.visibleRectPaddedByOuterGaps.width,
+                    availableWidth: context.workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps.width,
                     config: config.adaptiveLayout,
                 ),
             )

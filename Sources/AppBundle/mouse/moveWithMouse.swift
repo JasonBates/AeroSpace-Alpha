@@ -33,7 +33,7 @@ private func moveWithMouse(_ window: Window) async throws { // todo cover with t
             return // Unconventional windows can't be moved with mouse
         case .tilingContainer:
             moveTilingWindow(window)
-        case .unbound: return
+        case nil: return
     }
 }
 
@@ -49,10 +49,10 @@ private func moveFloatingWindow(_ window: Window) async throws {
 }
 
 extension Window {
-    /// Binds a floating window to the active workspace of the monitor its centre is on
+    /// Binds a floating window to the visible workspace of the monitor its centre is on
     @MainActor
     func bindFloatingWindowToMonitorUnderCenter() async throws {
-        guard let targetWorkspace = try await getCenter(.cancellable)?.monitorApproximation.activeWorkspace else { return }
+        guard let targetWorkspace = try await getCenter(.cancellable)?.monitorApproximation.visibleWorkspace else { return }
         if targetWorkspace != nodeWorkspace {
             bindAsFloatingWindow(to: targetWorkspace)
         }
@@ -64,7 +64,7 @@ private func moveTilingWindow(_ window: Window) {
     currentlyManipulatedWithMouseWindowId = window.windowId
     window.lastAppliedLayoutPhysicalRect = nil
     let mouseLocation = mouseLocation
-    let targetWorkspace = mouseLocation.monitorApproximation.activeWorkspace
+    let targetWorkspace = mouseLocation.monitorApproximation.visibleWorkspace
     let swapTarget = mouseLocation
         .findWindowRecursively(in: targetWorkspace.rootTilingContainer, virtual: false, fullscreenCoversAll: false)?
         .takeIf { $0 != window }

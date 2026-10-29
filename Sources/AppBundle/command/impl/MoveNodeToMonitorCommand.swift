@@ -38,7 +38,7 @@ func moveWindowToMonitor(
     focusFollowsWindow: Bool,
     failIfNoop: Bool,
 ) -> BinaryExitCode {
-    let targetWs = targetMonitor.activeWorkspace
+    let targetWs = targetMonitor.visibleWorkspace
     let index = true == direction
         .map { dir in dir.isPositive && targetWs.rootTilingContainer.orientation == dir.orientation }
         ? 0

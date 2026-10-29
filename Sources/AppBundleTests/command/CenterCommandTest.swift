@@ -9,7 +9,7 @@ final class CenterCommandTest: XCTestCase {
     func testCentresFloatingWindowOnItsMonitor() async throws {
         let window = TestWindow.new(id: 1, parent: focus.workspace.floatingWindowsContainer, rect: Rect(topLeftX: 10, topLeftY: 20, width: 400, height: 300))
         assertTrue(window.focusWindow())
-        let bounds = focus.workspace.workspaceMonitor.visibleRectPaddedByOuterGaps
+        let bounds = focus.workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps
 
         let result = await parseCommand("center").cmdOrDie.run(.defaultEnv, .emptyStdin)
         assertEquals(result.exitCode.rawValue, 0)
@@ -19,7 +19,7 @@ final class CenterCommandTest: XCTestCase {
     }
 
     func testShrinksWindowLargerThanMonitor() async throws {
-        let bounds = focus.workspace.workspaceMonitor.visibleRectPaddedByOuterGaps
+        let bounds = focus.workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps
         let window = TestWindow.new(id: 1, parent: focus.workspace.floatingWindowsContainer, rect: Rect(topLeftX: 0, topLeftY: 0, width: bounds.width + 500, height: 300))
         assertTrue(window.focusWindow())
 

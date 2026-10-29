@@ -32,7 +32,7 @@ extension TreeNode {
                 }
             case .workspace, .floatingWindowsContainer, .macosMinimizedWindowsContainer,
                  .macosFullscreenWindowsContainer, .macosPopupWindowsContainer,
-                 .macosHiddenAppsWindowsContainer:
+                 .macosHiddenAppsWindowsContainer, .monitor, .workspacesContainer:
                 return nil
         }
     }

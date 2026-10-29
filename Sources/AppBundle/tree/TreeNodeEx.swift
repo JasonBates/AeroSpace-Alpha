@@ -30,14 +30,14 @@ extension TreeNode {
     }
 
     /// Also see: workspace
-    @MainActor
-    var visualWorkspace: Workspace? { nodeWorkspace ?? nodeMonitorInfo?.activeWorkspace }
+    @MainActor var visualWorkspace: Workspace? { nodeWorkspace ?? nodeMonitorInfo?.visibleWorkspace }
 
-    @MainActor
-    var nodeMonitorInfo: MonitorInfo? {
+    @MainActor var nodeMonitorInfo: MonitorInfo? {
         switch self.nodeCases {
-            case .workspace(let ws): ws.workspaceMonitor
+            case .monitor(let it): it.info
             case .window,
+                 .workspace,
+                 .workspacesContainer,
                  .tilingContainer,
                  .macosFullscreenWindowsContainer,
                  .macosHiddenAppsWindowsContainer,
@@ -114,6 +114,8 @@ extension TreeNode {
                      .floatingWindowsContainer,
                      .macosFullscreenWindowsContainer,
                      .macosHiddenAppsWindowsContainer,
+                     .monitor,
+                     .workspacesContainer,
                      .macosPopupWindowsContainer:
                     true
                 case .tilingContainer(let parent):
@@ -128,7 +130,8 @@ extension TreeNode {
                 check(parent.orientation == direction.orientation)
                 return innermostChild.ownIndex.map { (parent, $0) }
             case .workspace, .floatingWindowsContainer, nil, .macosMinimizedWindowsContainer,
-                 .macosFullscreenWindowsContainer, .macosHiddenAppsWindowsContainer, .macosPopupWindowsContainer:
+                 .macosFullscreenWindowsContainer, .macosHiddenAppsWindowsContainer, .macosPopupWindowsContainer,
+                 .monitor, .workspacesContainer:
                 return nil
         }
     }

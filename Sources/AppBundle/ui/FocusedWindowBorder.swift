@@ -80,7 +80,7 @@ final class FocusedWindowBorder {
         switch window.windowParentCases {
             case .tilingContainer, .floatingWindowsContainer: true
             case .macosMinimizedWindowsContainer, .macosFullscreenWindowsContainer,
-                 .macosHiddenAppsWindowsContainer, .macosPopupWindowsContainer, .unbound: false
+                 .macosHiddenAppsWindowsContainer, .macosPopupWindowsContainer, nil: false
         }
     }
 }

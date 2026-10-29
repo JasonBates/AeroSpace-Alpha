@@ -82,7 +82,7 @@ final class FocusMode {
     }
 
     func baseGeometry(for workspace: Workspace) -> FocusModeBaseGeometry {
-        let monitor = destinationMonitor(for: workspace.workspaceMonitor, among: monitorInfos)
+        let monitor = destinationMonitor(for: workspace.workspaceMonitorInfo, among: monitorInfos)
         let available = monitor.visibleRectPaddedByOuterGaps
         let fullHeight = available.height - 1
         let frame: Rect

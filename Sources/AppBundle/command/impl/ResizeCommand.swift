@@ -29,14 +29,14 @@ struct ResizeCommand: Command {
            let workspace = window.nodeWorkspace
         {
             let isInFocusMode = FocusMode.shared.frame(for: window, in: workspace) != nil
-            let isAdaptiveLayoutEnabled = config.adaptiveLayout.enabled.getValue(for: workspace.workspaceMonitor)
+            let isAdaptiveLayoutEnabled = config.adaptiveLayout.enabled.getValue(for: workspace.workspaceMonitorInfo)
             let isAdaptiveLoneTilingWindow = workspace.rootTilingContainer.allLeafWindowsRecursive
                 .filter { !$0.isAwaitingOnWindowDetected }
                 .singleOrNil() === window
             let isLegacyLoneTilingWindow = workspace.rootTilingContainer.hasSingleLeafWindowRecursive &&
                 workspace.rootTilingContainer.anyLeafWindowRecursive === window
             let focusGeometry = isInFocusMode ? FocusMode.shared.baseGeometry(for: workspace) : nil
-            let monitor = focusGeometry?.monitor ?? workspace.workspaceMonitor
+            let monitor = focusGeometry?.monitor ?? workspace.workspaceMonitorInfo
             let rect = monitor.visibleRectPaddedByOuterGaps
             let baseWidth: CGFloat? = if let focusGeometry {
                 focusGeometry.frame.width
@@ -118,7 +118,7 @@ struct ResizeCommand: Command {
 
         if orientation == .h,
            let workspace = node.nodeWorkspace,
-           config.adaptiveLayout.enabled.getValue(for: workspace.workspaceMonitor),
+           config.adaptiveLayout.enabled.getValue(for: workspace.workspaceMonitorInfo),
            target.windowOrNil.flatMap({ FocusMode.shared.frame(for: $0, in: workspace) }) == nil,
            let currentWidth = adaptiveCurrentPhysicalWidth(of: node, in: parent, workspace: workspace)
         {
@@ -183,7 +183,7 @@ struct ResizeCommand: Command {
         } else {
             size.height = newValue
         }
-        let bounds = workspace.workspaceMonitor.visibleRectPaddedByOuterGaps
+        let bounds = workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps
         if keepAspectRatio && (size.width > bounds.width || size.height > bounds.height) {
             let fit = min(bounds.width / size.width, bounds.height / size.height)
             size = CGSize(width: size.width * fit, height: size.height * fit)

@@ -19,7 +19,7 @@ struct MoveCommand: Command {
             return .fail
         }
         switch currentWindow.windowParentCases {
-            case .unbound: return .fail
+            case nil: return .fail
             case .tilingContainer(let parent):
                 guard let indexOfCurrent = currentWindow.ownIndex else { return .fail(io.err(bugPrompt())) }
                 let indexOfSiblingTarget = indexOfCurrent + direction.focusOffset
@@ -80,7 +80,7 @@ struct MoveCommand: Command {
                     return .fail(io.err("Must be discarded by args parser"))
             }
         case .allMonitorsOuterFrame:
-            let currentMonitor = workspace.workspaceMonitor
+            let currentMonitor = workspace.workspaceMonitorInfo
             guard let (monitors, index) = currentMonitor.findRelativeMonitor(inDirection: direction) else {
                 return .fail(io.err(bugPrompt("Should never happen. Can't find the current monitor")))
             }
@@ -125,7 +125,7 @@ struct MoveCommand: Command {
             createImplicitContainerAndMoveWindow(window, workspace, direction)
             return .succ
         case .wrapAroundAllMonitors:
-            if wrappedMonitor.rect.topLeftCorner == workspace.workspaceMonitor.rect.topLeftCorner {
+            if wrappedMonitor.rect.topLeftCorner == workspace.workspaceMonitorInfo.rect.topLeftCorner {
                 return wrapAroundTheWorkspace(window, workspace, direction)
             }
 
@@ -173,6 +173,8 @@ private let moveOutMacosUnconventionalWindow = "moving macOS fullscreen, minimiz
             // Impossible: tilingContainer's parent can only be a workspace or tilingContainer
             case .floatingWindowsContainer,
                  .macosMinimizedWindowsContainer,
+                 .monitor,
+                 .workspacesContainer,
                  .macosFullscreenWindowsContainer,
                  .macosHiddenAppsWindowsContainer,
                  .macosPopupWindowsContainer: true

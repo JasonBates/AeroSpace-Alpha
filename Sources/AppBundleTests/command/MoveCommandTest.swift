@@ -34,8 +34,8 @@ final class MoveCommandTest: XCTestCase {
             let monitors = useTestMonitors([sourceRect, targetRect])
             let source = Workspace.get(byName: "source-\(direction.rawValue)")
             let target = Workspace.get(byName: "target-\(direction.rawValue)")
-            assertTrue(monitors[0].setActiveWorkspace(source))
-            assertTrue(monitors[1].setActiveWorkspace(target))
+            assertTrue(monitors[0].setVisibleWorkspace(source))
+            assertTrue(monitors[1].setVisibleWorkspace(target))
             let originalRoot = source.rootTilingContainer
             originalRoot.changeOrientation(direction.orientation.opposite)
             TestWindow.new(id: 1, parent: originalRoot)
@@ -70,8 +70,8 @@ final class MoveCommandTest: XCTestCase {
             let (leftMonitor, rightMonitor) = useTwoTestMonitors()
             let source = Workspace.get(byName: "source-\(shouldBeAlone)")
             let target = Workspace.get(byName: "target-\(shouldBeAlone)")
-            assertTrue(leftMonitor.setActiveWorkspace(source))
-            assertTrue(rightMonitor.setActiveWorkspace(target))
+            assertTrue(leftMonitor.setVisibleWorkspace(source))
+            assertTrue(rightMonitor.setVisibleWorkspace(target))
             let root = source.rootTilingContainer
             root.changeOrientation(shouldBeAlone ? .v : .h)
             if !shouldBeAlone {
@@ -97,8 +97,8 @@ final class MoveCommandTest: XCTestCase {
         ])
         let source = Workspace.get(byName: "source")
         let target = Workspace.get(byName: "target")
-        assertTrue(monitors[0].setActiveWorkspace(source))
-        assertTrue(monitors[1].setActiveWorkspace(target))
+        assertTrue(monitors[0].setVisibleWorkspace(source))
+        assertTrue(monitors[1].setVisibleWorkspace(target))
         let root = source.rootTilingContainer
         let active = TestWindow.new(id: 1, parent: root)
         let pendingContainer = TilingContainer.newVTiles(parent: root, adaptiveWeight: WEIGHT_AUTO)
@@ -124,8 +124,8 @@ final class MoveCommandTest: XCTestCase {
         ])
         let source = Workspace.get(byName: "source")
         let target = Workspace.get(byName: "target")
-        assertTrue(monitors[0].setActiveWorkspace(source))
-        assertTrue(monitors[1].setActiveWorkspace(target))
+        assertTrue(monitors[0].setVisibleWorkspace(source))
+        assertTrue(monitors[1].setVisibleWorkspace(target))
         let root = source.rootTilingContainer
         var moved: Window!
         TilingContainer.newVTiles(parent: root, adaptiveWeight: 1).apply {
@@ -178,8 +178,8 @@ final class MoveCommandTest: XCTestCase {
         ])
         let source = Workspace.get(byName: "source")
         let target = Workspace.get(byName: "target")
-        assertTrue(monitors[0].setActiveWorkspace(source))
-        assertTrue(monitors[1].setActiveWorkspace(target))
+        assertTrue(monitors[0].setVisibleWorkspace(source))
+        assertTrue(monitors[1].setVisibleWorkspace(target))
         let root = source.rootTilingContainer.apply {
             TestWindow.new(id: 1, parent: $0)
             TestWindow.new(id: 2, parent: $0)
@@ -253,8 +253,8 @@ final class MoveCommandTest: XCTestCase {
         let (leftMonitor, rightMonitor) = useTwoTestMonitors()
         let leftWorkspace = Workspace.get(byName: "left")
         let rightWorkspace = Workspace.get(byName: "right")
-        assertEquals(leftMonitor.setActiveWorkspace(leftWorkspace), true)
-        assertEquals(rightMonitor.setActiveWorkspace(rightWorkspace), true)
+        assertEquals(leftMonitor.setVisibleWorkspace(leftWorkspace), true)
+        assertEquals(rightMonitor.setVisibleWorkspace(rightWorkspace), true)
 
         leftWorkspace.rootTilingContainer.apply {
             TestWindow.new(id: 1, parent: $0)
@@ -303,7 +303,7 @@ final class MoveCommandTest: XCTestCase {
                 })
                 let workspaces = monitors.enumerated().map { index, monitor in
                     let workspace = Workspace.get(byName: "monitor-\(index)")
-                    assertEquals(monitor.setActiveWorkspace(workspace), true)
+                    assertEquals(monitor.setVisibleWorkspace(workspace), true)
                     return workspace
                 }
                 let windows = workspaces.enumerated().map { index, workspace in
@@ -332,8 +332,8 @@ final class MoveCommandTest: XCTestCase {
         let (leftMonitor, rightMonitor) = useTwoTestMonitors()
         let leftWorkspace = Workspace.get(byName: "left")
         let rightWorkspace = Workspace.get(byName: "right")
-        assertEquals(leftMonitor.setActiveWorkspace(leftWorkspace), true)
-        assertEquals(rightMonitor.setActiveWorkspace(rightWorkspace), true)
+        assertEquals(leftMonitor.setVisibleWorkspace(leftWorkspace), true)
+        assertEquals(rightMonitor.setVisibleWorkspace(rightWorkspace), true)
 
         leftWorkspace.rootTilingContainer.apply {
             assertEquals(TestWindow.new(id: 1, parent: $0).focusWindow(), true)
@@ -716,7 +716,7 @@ private struct MoveCommandTestMonitorInfo: MonitorInfo {
     var height: CGFloat { rect.height }
 }
 
-private func useTwoTestMonitors() -> (left: MonitorInfo, right: MonitorInfo) {
+@MainActor private func useTwoTestMonitors() -> (left: MonitorInfo, right: MonitorInfo) {
     let monitors = useTestMonitors([
         Rect(topLeftX: 0, topLeftY: 0, width: 1920, height: 1080),
         Rect(topLeftX: 1920, topLeftY: 0, width: 1920, height: 1080),
@@ -724,7 +724,7 @@ private func useTwoTestMonitors() -> (left: MonitorInfo, right: MonitorInfo) {
     return (monitors[0], monitors[1])
 }
 
-private func useTestMonitors(_ rects: [Rect]) -> [MonitorInfo] {
+@MainActor private func useTestMonitors(_ rects: [Rect]) -> [MonitorInfo] {
     let monitors = rects.enumerated().map { index, rect in
         MoveCommandTestMonitorInfo(
             monitorAppKitNsScreenScreensId: index + 1,
@@ -734,7 +734,7 @@ private func useTestMonitors(_ rects: [Rect]) -> [MonitorInfo] {
             isMain: index == 0,
         )
     }
-    monitorInfosForTests = monitors
+    setMonitorInfosForTests(monitors)
     return monitors
 }
 
@@ -766,6 +766,8 @@ extension TreeNode {
             case .macosMinimizedWindowsContainer: .macosMinimized
             case .macosFullscreenWindowsContainer: .macosFullscreen
             case .macosHiddenAppsWindowsContainer: .macosHiddeAppWindow
+            case .monitor: .monitor
+            case .workspacesContainer: .workspacesContainer
             case .macosPopupWindowsContainer: .macosPopupWindowsContainer
             case .tilingContainer(let container):
                 switch container.layout {
@@ -794,4 +796,8 @@ enum LayoutDescription: Equatable {
     case macosMinimized
     case macosHiddeAppWindow
     case macosFullscreen
+
+    // todo think about it
+    case workspacesContainer
+    case monitor
 }

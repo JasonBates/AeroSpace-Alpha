@@ -15,8 +15,15 @@ let projectRoot: URL = {
 
 @MainActor
 func setUpWorkspacesForTests() {
-    monitorInfosForTests = nil
-    resetMonitorWorkspaceAssignmentsForTests()
+    forgetDisplacedWorkspacesForTests()
+    setMonitorInfosForTests(nil)
+    // A test may make a workspace visible without focusing it (setVisibleWorkspace). setFocus returns early when the
+    // focus is unchanged, so clear the visibility explicitly, or that workspace survives garbage collection
+    for monitor in Monitor.all {
+        let container = monitor.getWorkspacesContainerOrCreate()
+        container.visibleWorkspaceNameOrStale = nil
+        container.prevVisibleWorkspaceName = nil
+    }
     FocusMode.shared.stop()
     config = defaultConfig
     configUrl = defaultConfigUrl
@@ -38,7 +45,7 @@ func setUpWorkspacesForTests() {
     Workspace.garbageCollectUnusedWorkspaces()
     check(focus.workspace.isEffectivelyEmpty)
     check(focus.workspace === Workspace.all.singleOrNil(), Workspace.all.map(\.description).joined(separator: ", "))
-    check(mainMonitorInfo.setActiveWorkspace(focus.workspace))
+    check(mainMonitorInfo.setVisibleWorkspace(focus.workspace))
 
     TestApp.shared.focusedWindow = nil
     TestApp.shared.windows = []

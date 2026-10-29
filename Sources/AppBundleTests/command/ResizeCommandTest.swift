@@ -340,7 +340,7 @@ final class ResizeCommandTest: XCTestCase {
     }
 
     func testFloatingResizeStaysInsideMonitor() async throws {
-        let bounds = focus.workspace.workspaceMonitor.visibleRectPaddedByOuterGaps
+        let bounds = focus.workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps
         let window = TestWindow.new(id: 1, parent: focus.workspace.floatingWindowsContainer, rect: Rect(topLeftX: bounds.topLeftX, topLeftY: bounds.topLeftY, width: 400, height: 200))
         assertTrue(window.focusWindow())
 
