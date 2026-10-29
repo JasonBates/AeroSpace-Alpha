@@ -370,6 +370,24 @@ their monitor's container, where a later lookup under the same name could
 find the dead object next to the live one. Alpha unbinds them as they are
 collected. `MonitorTest` covers all of this.
 
+Neither build observed screen changes at all: a lid, a cable or a wake reached
+AeroSpace only through some unrelated refresh, often one that ran while macOS
+was still reporting in-between sizes, and the tiles kept those until the next
+click. `GlobalObserver` now refreshes on `didChangeScreenParametersNotification`
+and the two wake notifications, and once more a second later, when the menu
+bar and Dock have followed the screen. A screen change also clears each
+window's `lastAppliedLayoutPhysicalRect` (`forgetAppliedWindowFrames`): macOS
+moves windows itself meanwhile, and the redundant-write skip from
+[discussion #2137](https://github.com/nikitabobko/AeroSpace/discussions/2137)
+would otherwise leave a window where macOS put it whenever its tile came out
+unchanged.
+
+Reading the natively focused window asks the frontmost app over AX, and an app
+losing focus can take about 100 ms to answer. An answer that arrived after a
+newer session had adopted the next app flicked AeroSpace's focus back to the
+old one. `syncFocusFromMacOs` now drops an answer when the frontmost app
+changed during the read; the race is in upstream's code as well.
+
 With these, a rule can open a window floating, sized and centred:
 
 ```toml
