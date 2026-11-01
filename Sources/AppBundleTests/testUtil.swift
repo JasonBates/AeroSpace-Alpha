@@ -32,6 +32,11 @@ func setUpWorkspacesForTests() {
     config.enableNormalizationOppositeOrientationForNestedContainers = false // Make layout tests more predictable
     config.defaultRootContainerOrientation = .horizontal // Make default layout predictable
     config.singleWindowWidthRules = [] // Geometry tests opt into centred sizing explicitly
+    // The example configuration moves the actual pointer on monitor focus changes. Tests opt into
+    // callbacks explicitly; the shared fixture must not post desktop input or execute workspace hooks.
+    config.onFocusedMonitorChanged = .empty
+    config.onFocusChanged = .empty
+    config.execOnWorkspaceChange = []
 
     // Don't create any bindings and workspaces for tests
     config.modes = [mainModeId: Mode(bindings: [:])]

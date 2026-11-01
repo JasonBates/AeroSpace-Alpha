@@ -1,5 +1,6 @@
 import AppKit
 import Common
+import Common
 
 struct MoveMouseCommand: Command {
     let args: MoveMouseCmdArgs
@@ -39,6 +40,9 @@ struct MoveMouseCommand: Command {
 }
 
 private func moveMouse(_ io: CmdIo, _ point: CGPoint) -> BinaryExitCode {
+    // Unit tests exercise command/callback logic with synthetic monitors. Never post native
+    // input into the user's working desktop, even if an example configuration hook is enabled.
+    if isUnitTest { return .succ }
     let event = CGEvent(
         mouseEventSource: nil,
         mouseType: CGEventType.mouseMoved,

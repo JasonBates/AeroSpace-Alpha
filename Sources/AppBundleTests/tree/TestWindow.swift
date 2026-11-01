@@ -7,6 +7,7 @@ final class TestWindow: Window, CustomStringConvertible {
     var nativeWindowIdForTest: UInt32?
     override var nativeWindowId: UInt32? { nativeWindowIdForTest }
     var isMacosFullscreenForTest = false
+    var isMacosMinimizedForTest = false
     var onGetAxSize: (@MainActor () -> Void)?
     var onGetAxRect: (@MainActor () -> Void)?
     var rejectAxFrameChangesForTest = false
@@ -15,16 +16,16 @@ final class TestWindow: Window, CustomStringConvertible {
     var setAxFrameCallCountForTest = 0
 
     @MainActor
-    private init(_ id: OpaqueWindowId, _ parent: NonLeafTreeNodeObject, _ adaptiveWeight: CGFloat, _ rect: Rect?) {
+    private init(_ id: OpaqueWindowId, _ parent: NonLeafTreeNodeObject, _ adaptiveWeight: CGFloat, _ rect: Rect?, _ app: TestApp) {
         _rect = rect
-        super.init(id: id, TestApp.shared, lastFloatingSize: nil, parent: parent, adaptiveWeight: adaptiveWeight, index: INDEX_BIND_LAST)
+        super.init(id: id, app, lastFloatingSize: nil, parent: parent, adaptiveWeight: adaptiveWeight, index: INDEX_BIND_LAST)
     }
 
     @discardableResult
     @MainActor
-    static func new(id: OpaqueWindowId, parent: NonLeafTreeNodeObject, adaptiveWeight: CGFloat = 1, rect: Rect? = nil) -> TestWindow {
-        let wi = TestWindow(id, parent, adaptiveWeight, rect)
-        TestApp.shared._windows.append(wi)
+    static func new(id: OpaqueWindowId, parent: NonLeafTreeNodeObject, adaptiveWeight: CGFloat = 1, rect: Rect? = nil, app: TestApp = .shared) -> TestWindow {
+        let wi = TestWindow(id, parent, adaptiveWeight, rect, app)
+        app._windows.append(wi)
         return wi
     }
 
@@ -32,8 +33,8 @@ final class TestWindow: Window, CustomStringConvertible {
 
     @MainActor
     override func nativeFocus() {
-        appForTests = TestApp.shared
-        TestApp.shared.focusedWindow = self
+        appForTests = app
+        (app as! TestApp).focusedWindow = self
     }
 
     override func closeAxWindow() {
@@ -43,15 +44,18 @@ final class TestWindow: Window, CustomStringConvertible {
     override func getTitle(_ cm: CancellationMode) async throws -> String { description }
 
     @MainActor override func getAxRect(_ cm: CancellationMode) async throws -> Rect? { // todo change to not Optional
+        // A queued AX reply can describe the native window that existed before a remap during the read.
+        let reply = _rect
         onGetAxRect?()
         onGetAxRect = nil
-        return _rect
+        return reply
     }
 
     @MainActor override func getAxSize(_ cm: CancellationMode) async throws -> CGSize? {
+        let reply = _rect.map { CGSize(width: $0.width, height: $0.height) }
         onGetAxSize?()
         onGetAxSize = nil
-        return _rect.map { CGSize(width: $0.width, height: $0.height) }
+        return reply
     }
 
     override func setAxFrame(_ topLeft: CGPoint?, _ size: CGSize?) {
@@ -67,6 +71,7 @@ final class TestWindow: Window, CustomStringConvertible {
     }
 
     override func isMacosFullscreen(_ cm: CancellationMode) async throws -> Bool { isMacosFullscreenForTest }
+    override func isMacosMinimized(_ cm: CancellationMode) async throws -> Bool { isMacosMinimizedForTest }
 
     override func setNativeFullscreen(_ value: Bool) {
         isMacosFullscreenForTest = value
