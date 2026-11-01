@@ -57,8 +57,14 @@ extension Window {
     /// Binds a floating window to the visible workspace of the monitor its centre is on
     @MainActor
     func bindFloatingWindowToMonitorUnderCenter() async throws {
-        guard let targetWorkspace = try await getCenter(.cancellable)?.monitorApproximation.visibleWorkspace else { return }
-        if targetWorkspace != nodeWorkspace {
+        guard lifeStatus == .alive, isFloating, let parent, let workspace = nodeWorkspace else { return }
+        let generation = nativeGeometryGeneration
+        guard let center = try await getCenter(.cancellable) else { return }
+        // A delayed native reply must not move a replacement tab or undo a concurrent lifecycle change.
+        guard nativeGeometryGeneration == generation, lifeStatus == .alive, isFloating,
+              self.parent === parent, nodeWorkspace === workspace else { return }
+        let targetWorkspace = center.monitorApproximation.visibleWorkspace
+        if targetWorkspace != workspace {
             bindAsFloatingWindow(to: targetWorkspace)
         }
     }

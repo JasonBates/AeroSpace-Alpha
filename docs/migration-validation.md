@@ -158,6 +158,36 @@ supported. The legacy mouse path also replays an established edge back to its
 baseline while retaining the initial noise threshold; its stored baseline expires
 on native, topology or monitor changes and on release.
 
+## Floating drag completion follow-up
+
+Independent review found a separate delayed-read path after the five repairs:
+`bindFloatingWindowToMonitorUnderCenter` could use an old native centre to move
+a replacement tab to another monitor's workspace, or reinsert a closed/unbound
+window into the tree. The same helper runs during dragging and on release.
+
+`FloatingMoveLifecycleTest.swift` adds nine focused tests. Before the source
+guard, six tests failed with 48 assertion failures and three positive tests
+passed. The captured `TestWindow.onGetAxRect` reply reproduces both remapping
+and closure while the centre read is pending; all failing assertions remain
+ordinary regression assertions. Coverage also includes invisible/dead bound
+windows, explicit workspace moves, conversion to tiling/native fullscreen,
+invalid initial states, missing geometry, unchanged binding order, two/three
+monitor crossings in both directions, and successful/stale release cleanup.
+
+The helper now requires an alive, bound floating window before reading its
+centre. It captures native geometry generation, parent and workspace, then
+rechecks them, liveness and floating state after the read, before choosing or
+committing the new binding. Stale replies leave the current binding intact.
+The remap regression checks the actual production mapping helper, logical and
+native identity, replacement workspace/frame and absence from the stale target;
+closed/unbound regressions check that the node never returns to the tree.
+
+This is deterministic model evidence using a captured reply at the production
+await boundary. It does not execute native AX threads, actual MacApp garbage
+collection, observer/session scheduling or a physical mouse drag. Display
+disconnect/wake during a drag remains controlled live-trial work. These tests
+do not establish native daily-use acceptance.
+
 ## Automated checks
 
 Toolchain: pinned Swift 6.4.2, Xcode developer directory, at most four build jobs.
@@ -181,6 +211,12 @@ The repaired full run passes **643 XCTest tests with zero failures**: all 630
 regression-checkpoint tests plus thirteen focused repair tests. The 24 original
 simulation tests retain all their assertions and now pass; the six seeds and 600
 mixed action rounds are unchanged.
+
+The floating drag completion follow-up passes **652 XCTest tests with zero
+failures**, including all nine new regressions and the previous 643 tests. Its
+focused command is `swiftly run swift test --jobs 4 --filter FloatingMoveLifecycleTest`.
+Exact before/after logs and follow-up checks are recorded in
+`.claude/work-orders/runs/floating-move-lifecycle-report.md`.
 
 The parent owns independent clean-tree `./test.sh`, release/package validation
 and any live trial. Exact commands and results are recorded in
