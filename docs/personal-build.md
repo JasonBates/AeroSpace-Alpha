@@ -240,9 +240,11 @@ display points. Colour, thickness and inset still use the shared border settings
 
 ## Upstream pull requests included
 
-Alpha merges these open upstream pull requests, which fix bugs that affect
-my multi-monitor setup. Each is merged
-unchanged except where noted.
+Alpha includes these selected upstream pull requests, which fix bugs that affect
+my multi-monitor setup. Adaptations are noted below. The earlier #2225
+native-tab implementation has been retired in favour of Nikita Bobko's newer
+upstream window identity work, described under
+[November 2026 window identity migration](#november-2026-window-identity-migration).
 
 - [#2232](https://github.com/nikitabobko/AeroSpace/pull/2232): avoid a crash
   while displays are being reconfigured.
@@ -264,17 +266,12 @@ unchanged except where noted.
   fell back to the first window in tree order. It now skips MRU children
   without windows (`mostRecentNonEmptyWindowRecursive`). Covers the paths
   #2201 does not, such as workspace switches.
-- [#2225](https://github.com/nikitabobko/AeroSpace/pull/2225): a new native
-  tab (Finder, Ghostty) takes its predecessor's place in the tree (issue #68).
-  One line resolved by hand to keep #2220's change as well. Narrowed so that a
-  window closing is not taken for a tab switch (see the Cmd-W paragraph under
-  Further additions).
 - [#2174](https://github.com/nikitabobko/AeroSpace/pull/2174): a window
   returns to its place in the layout after macOS native full screen.
 - [#2317](https://github.com/nikitabobko/AeroSpace/pull/2317): the windows of
   an app that hangs or is too busy to answer Accessibility requests are no
-  longer treated as closed (issue #1216). Resolved by hand against #2225 in
-  the same function, so retired native tabs stay dead; unit tests added.
+  longer treated as closed (issue #1216). The WindowServer liveness fallback
+  remains adapted to the current window identity model; unit tests cover it.
 - [#2326](https://github.com/nikitabobko/AeroSpace/pull/2326): when an app
   does not answer the window enumeration in time (issue #1615), the refresh
   is retried with exponential backoff instead of leaving its windows
@@ -290,7 +287,7 @@ unchanged except where noted.
 - [#2316](https://github.com/nikitabobko/AeroSpace/pull/2316): apps that
   macOS 27 reports with process id -1 (Xcode 27 Device Hub, Java apps started
   through a launcher script) are detected and managed. Resolved by hand
-  against the native-tab code: closures capture the resolved pid.
+  against the current window identity code: closures capture the resolved pid.
 - [#2167](https://github.com/nikitabobko/AeroSpace/pull/2167): a window's
   frame is written only when the layout changed it. Focus Mode had to record
   the frame it applies rather than the tile rect, or the tile frame was never
@@ -438,10 +435,12 @@ With these, a rule can open a window floating, sized and centred:
 
 ## November 2026 window identity migration
 
-The migration through upstream `c960a8ac` adopts its `OpaqueWindowId`, window
-`lifeStatus` and tombstone containers. A logical window keeps its AeroSpace ID
-and tree node while native tabs exchange macOS WindowServer IDs. Invisible
-native Spaces and inactive tabs retain placeholders without consuming layout
+The migration through upstream [`c960a8ac`](https://github.com/nikitabobko/AeroSpace/commit/c960a8ac)
+adopts its opaque logical window ID, lifecycle status and placeholder containers.
+A logical window keeps its AeroSpace ID and tree node while native tabs exchange
+macOS WindowServer IDs. For example, a Finder tab switch can keep the AeroSpace
+`window-id` while changing `window-native-id`. Invisible native Spaces and
+inactive tabs retain placeholders without consuming layout
 footprint, minimum sizes, donor weights, automatic focus or visible-window command results.
 An explicit `focus --window-id` still activates a hidden native tab or Space,
 as upstream permits.
@@ -479,6 +478,17 @@ number or `null` in JSON and `null` in text when unavailable. Persisted
 snapshots must match native IDs and app PIDs when crossing this identity
 migration, then use the new logical IDs when issuing AeroSpace commands.
 
+The optional [`launch-window`](aerospace-launch-window.adoc) command captures
+the destination workspace before starting an app adapter and assigns the next
+eligible window there at its first managed placement. It is experimental in
+the companion launch helper and is not enabled in the daily setup. Native
+trials placed and focused new Ghostty and Comet windows on the requested
+workspaces across three displays, but Ghostty and Finder could briefly paint
+their first frame on a different display. This visible flash is accepted for
+v0.8; correct managed placement cannot control every app's first native frame.
+See [migration validation](migration-validation.md) for exact test and trial
+scope.
+
 The upstream queue workflow is omitted: Alpha retains its existing contribution
 policy and build/release workflows without upstream's queue-management policy.
 Swift 6.4.2 and the matching generated project settings are retained.
@@ -505,9 +515,11 @@ template in `personal-build.env.example`), which is never committed.
 
 Alpha takes upstream `main` by merging it in, in ordered chunks when upstream
 has restructured something, so each chunk compiles and passes the tests on its
-own. It is not rebased: the twenty "Merge upstream PR" commits keep their
+own. It is not rebased: the existing "Merge upstream PR" commits keep their
 hand-resolution notes, and nothing upstream is rewritten. The October 2026
-update was three merges (`23d5205`, `c419f4b`, `c736e8e`).
+update was three merges (`23d5205`, `c419f4b`, `c736e8e`). The November 2026
+identity update then merged upstream through `c960a8ac`; the October hashes
+are historical checkpoints.
 
 Upstream's `.github/` carries automation for its own contribution policy: a
 workflow that closes and locks issues from anyone but its maintainers, one that

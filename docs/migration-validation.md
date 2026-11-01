@@ -44,12 +44,13 @@ user input; the user confirmed interacting during testing. Those runs are not
 treated as proof of a core focus-policy defect. No speculative focus hold or
 activation-filter exception was added.
 
-**The no-cross-monitor-flash acceptance criterion is not met for Ghostty or
-Finder.** Ghostty 1.4.0 restores its saved position in `showWindow` before showing
-the window, and later applies cascading in its new-window path. Its installed
-scripting dictionary exposes no per-request initial bounds. This explains why
-correct first WM placement cannot promise correct first app paint; a robust
-next step needs app-side creation control, rather than another post-launch move.
+**The no-cross-monitor-flash criterion was not met for Ghostty or Finder.**
+Jason accepted that brief first-frame flash for v0.8, with no further cosmetic
+launch experiments scheduled. Ghostty 1.4.0 restores its saved position in
+`showWindow` before showing the window, and later applies cascading in its
+new-window path. Its installed scripting dictionary exposes no per-request
+initial bounds. Correct first AeroSpace placement therefore cannot promise
+correct first app paint; no core focus or production hiding change was made.
 See the [pinned Ghostty implementation](https://github.com/ghostty-org/ghostty/blob/v1.4.0/macos/Sources/Features/Terminal/TerminalController.swift#L1070).
 
 Test windows were cleaned up and starting workspaces/focus restored. Original
@@ -57,8 +58,8 @@ windows were preserved; one interrupted run left a test Finder window that was
 gone before the subsequent cleanup check, while the original-window check
 remained clean. The test harness was corrected to make cleanup independent of
 focus assertions. Native geometry is sampled metadata, not video proof.
-The full macOS lifecycle checklist and long-term daily-use acceptance remain
-separate from these launch checks.
+The full macOS lifecycle checklist below was not completed by these launch
+checks. Its unperformed items are not claimed as native passes for v0.8.
 
 ## Initial offline acceptance (historical)
 
@@ -322,10 +323,11 @@ the shared fixture isolates scenario state; the low-level guard provides the
 native-input boundary. Earlier runs cannot be guaranteed to have emitted no
 cursor event through the inherited example callback.
 
-## Controlled live trial still required
+## Additional native coverage not completed for v0.8
 
-Perform these only in an explicitly scheduled trial after repairs and a fresh
-full-suite pass. This checklist does not authorize switching the installed app.
+The following checklist records remaining native coverage. The installed
+candidate's launch checks and ordinary use do not count as completing each
+item. It does not authorize further runtime changes or cosmetic launch work.
 
 - Open two windows of one browser on each of three workspaces/monitors. Resize
   and close a background window, then close the focused last local window.

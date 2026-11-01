@@ -72,12 +72,12 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain" login.keychain-db
           rm -f "$RUNNER_TEMP/cert.p12"
-          echo "Identities in the imported certificate:"
-          security find-identity -p codesigning "$keychain" || true
           identity="$(security find-identity -v -p codesigning "$keychain" | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')"
           [ -n "$identity" ] || { echo "no valid Developer ID Application identity in the certificate" >&2; exit 1; }
+          echo "::add-mask::$identity"
+          team_id="$(printf '%s' "$identity" | sed -E 's/.*\(([A-Z0-9]{10})\)$/\1/')"
+          [ "$team_id" = "$identity" ] || echo "::add-mask::$team_id"
           echo "CODESIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
-          echo "Using identity: $identity"
 
       - name: Write the notarization key
         if: ${{ inputs.publish }}
@@ -130,6 +130,12 @@ jobs:
 
           Signed with a Developer ID and notarized by Apple. Unzip, move \`AeroSpace.app\` to Applications and \`bin/aerospace\` somewhere on your PATH. See the [README](https://github.com/${{ github.repository }}#download) for what is different from upstream, including the private API used for cross-monitor focus.
 
+          EOF
+          if test -f "docs/releases/$version.md"; then
+            cat "docs/releases/$version.md" >> "$notes"
+            printf '\n' >> "$notes"
+          fi
+          cat >> "$notes" <<EOF
           Provided as is, without warranty of any kind, under the MIT licence. Use at your own risk.
 
           SHA-256: \`$sha256\`

@@ -21,15 +21,34 @@
 
 <br>
 
+## Alpha v0.8
+
+This release moves Alpha onto upstream `main` through
+[`c960a8ac`](https://github.com/nikitabobko/AeroSpace/commit/c960a8ac). It keeps
+Alpha's adaptive layouts, Focus Mode, monitor recovery, private-API focus fix,
+floating-window controls and border while adopting upstream's new window
+identity model. A window keeps the same AeroSpace ID when a Finder or Ghostty
+native tab changes, even though macOS gives the replacement tab a different
+native window ID. The older [#2225](https://github.com/nikitabobko/AeroSpace/pull/2225)
+object-replacement implementation is retired. See the
+[v0.8 release notes](docs/releases/0.8.md) and
+[migration validation](docs/migration-validation.md).
+
+The optional `launch-window` command captures a workspace before an app creates
+a window, but the experimental launcher is not enabled in the daily setup.
+In native trials, Ghostty and Finder could briefly draw a new window on a
+different monitor before AeroSpace placed it correctly. That brief first-frame
+flash is an accepted limit of this release.
+
 ## How it differs from AeroSpace
 
-AeroSpace is a superb project: i3-style tiling on macOS, a plain-text config, a scriptable CLI, and no need to disable SIP. Alpha builds on that foundation and changes nothing about it. It adds a layer of upstream fixes that are still waiting to be merged, and a layer of features of its own on top.
+AeroSpace is a superb project: i3-style tiling on macOS, a plain-text config, a scriptable CLI, and no need to disable SIP. Alpha is developed while waiting for upstream fixes. It combines selected upstream contributions with features of its own.
 
 <p align="center">
-  <img src="docs/assets/how-alpha-differs.svg" width="100%" alt="Three layers: upstream AeroSpace at the bottom, eighteen pending upstream fixes in the middle, Alpha's own features on top">
+  <img src="docs/assets/how-alpha-differs.svg" width="100%" alt="Three layers: upstream AeroSpace at the bottom, included upstream fixes in the middle, Alpha's own features on top">
 </p>
 
-The bottom layer is upstream `main`, unchanged. The middle layer is a set of open upstream pull requests merged as they are, so bugs that upstream already has fixes for are fixed here now. The top layer is what I built for a three-monitor desk and a laptop. Everything else, from the config format to the CLI to the docs, is upstream's, and the credit for it belongs there.
+The bottom layer is upstream `main`. The middle layer is a set of selected upstream pull requests, adapted where needed to work together and with the current base. The top layer is what I built for a three-monitor desk and a laptop. The core project and its original design belong to upstream, and the credit for them belongs there.
 
 One rule separates the two projects. Upstream does not use private macOS APIs, and holds to that even where the public APIs cannot do the job. Alpha uses them when there is no other way: today that is the SkyLight call that makes focus land on the right window across monitors. Those pieces can never be merged upstream, which is why this build exists.
 
@@ -80,7 +99,7 @@ the normal tiling area. Both modes support resizing from the keyboard.
 
 ### Multi-monitor focus and movement that work
 
-With "Displays have separate Spaces" on and an app open on two monitors, stock AeroSpace often focuses the wrong window: you ask for the Ghostty window on the right monitor, macOS raises it, and your keystrokes go to the one on the left ([issue #101](https://github.com/nikitabobko/AeroSpace/issues/101), open since 2024). Alpha fixes this with the SkyLight call from [PR #2179](https://github.com/nikitabobko/AeroSpace/pull/2179), so `focus` and `move` across monitors land where the highlight is, every time. Around it:
+With "Displays have separate Spaces" on and an app open on two monitors, stock AeroSpace can focus the wrong window: you ask for the Ghostty window on the right monitor, macOS raises it, and your keystrokes go to the one on the left ([issue #101](https://github.com/nikitabobko/AeroSpace/issues/101), open since 2024). Alpha uses the SkyLight call from [PR #2179](https://github.com/nikitabobko/AeroSpace/pull/2179) to focus the requested native window across monitors. Around it:
 
 - Hidden windows on a middle monitor no longer flicker back into view, see [below](#hidden-windows-stay-hidden).
 - Reconfiguring displays, plugging in or waking, no longer crashes AeroSpace ([#2232](https://github.com/nikitabobko/AeroSpace/pull/2232)).
@@ -160,12 +179,11 @@ The single-window and accordion aspect-ratio work from upstream [PR #2093](https
 
 ## Upstream fixes included
 
-Open upstream pull requests merged unchanged, except where noted. Credit belongs to their authors.
+Selected upstream pull requests included, adapted where noted. Credit belongs to their authors. Native-tab identity in v0.8 comes from Nikita Bobko's newer upstream `main` work; Alpha's earlier adaptation of #2225 has been retired.
 
 | PR | Fixes |
 |---|---|
 | [#2179](https://github.com/nikitabobko/AeroSpace/pull/2179) | With separate Spaces per display, focus lands on the requested window of a multi-window app instead of one on another monitor ([#101](https://github.com/nikitabobko/AeroSpace/issues/101)). Adapted to the `MonitorInfo` rename. |
-| [#2225](https://github.com/nikitabobko/AeroSpace/pull/2225) | A new native tab in Finder or Ghostty takes its predecessor's place in the tree ([#68](https://github.com/nikitabobko/AeroSpace/issues/68)). |
 | [#2174](https://github.com/nikitabobko/AeroSpace/pull/2174) | A window returns to its place in the layout after macOS native full screen. |
 | [#2201](https://github.com/nikitabobko/AeroSpace/pull/2201) | Focus is restored after a transient dialog closes. |
 | [#2348](https://github.com/nikitabobko/AeroSpace/pull/2348) | When a floating window such as a Touch ID or 1Password prompt closes, focus returns to the window used before it rather than the first window of the workspace ([discussion #2200](https://github.com/nikitabobko/AeroSpace/discussions/2200)). Complements #2201. |
@@ -173,10 +191,10 @@ Open upstream pull requests merged unchanged, except where noted. Credit belongs
 | [#2220](https://github.com/nikitabobko/AeroSpace/pull/2220) | A window made floating by `on-window-detected` no longer stays at its tile position. |
 | [#2281](https://github.com/nikitabobko/AeroSpace/pull/2281) | No `focus` crash when a floating window moves or closes during the command. |
 | [#2232](https://github.com/nikitabobko/AeroSpace/pull/2232) | No crash while displays are being reconfigured. |
-| [#2317](https://github.com/nikitabobko/AeroSpace/pull/2317) | The windows of an app that hangs or is too busy to answer Accessibility requests are no longer treated as closed ([#1216](https://github.com/nikitabobko/AeroSpace/issues/1216)). Merged by hand with #2225's native-tab handling. |
+| [#2317](https://github.com/nikitabobko/AeroSpace/pull/2317) | The windows of an app that hangs or is too busy to answer Accessibility requests are no longer treated as closed ([#1216](https://github.com/nikitabobko/AeroSpace/issues/1216)). Adapted to the current window identity model. |
 | [#2326](https://github.com/nikitabobko/AeroSpace/pull/2326) | When an app does not answer the window enumeration in time, as under load after boot, the refresh is retried with backoff instead of leaving its windows undetected ([#1615](https://github.com/nikitabobko/AeroSpace/issues/1615)). Ported by hand onto #2317. |
 | [#2280](https://github.com/nikitabobko/AeroSpace/pull/2280) | Activating an app with windows on two monitors no longer pulls a hidden workspace onto the other monitor. Narrowed here: the off-screen window is ignored only while the app has a window on a visible workspace, so Cmd-Tab, Dock and notification clicks to an app on a hidden workspace still bring it up. |
-| [#2316](https://github.com/nikitabobko/AeroSpace/pull/2316) | Apps that macOS 27 reports with process id -1, such as Xcode 27 Device Hub and Java apps launched through a script, are detected and managed ([discussion #2270](https://github.com/nikitabobko/AeroSpace/discussions/2270)). Resolved by hand against the native-tab code. |
+| [#2316](https://github.com/nikitabobko/AeroSpace/pull/2316) | Apps that macOS 27 reports with process id -1, such as Xcode 27 Device Hub and Java apps launched through a script, are detected and managed ([discussion #2270](https://github.com/nikitabobko/AeroSpace/discussions/2270)). Adapted to the current window identity model. |
 | [#2167](https://github.com/nikitabobko/AeroSpace/pull/2167) | A window's frame is written only when the layout changed it, which ends the resize loop with apps that refuse the imposed frame (Xcode 27 Device Hub) and spares AX traffic. |
 | [#2310](https://github.com/nikitabobko/AeroSpace/pull/2310) | `balance-sizes` resets the closed-windows cache. |
 | [#2319](https://github.com/nikitabobko/AeroSpace/pull/2319) | `move` can wrap around all monitors ([discussion #2301](https://github.com/nikitabobko/AeroSpace/discussions/2301)). |
@@ -211,7 +229,7 @@ Your existing `~/.aerospace.toml` works unchanged. The new keys and commands are
 ## Things to know
 
 - **This is a personal build.** Releases appear when I rebuild for myself, not on a schedule. It is public so the code can be read and borrowed, and so the build can be downloaded. Discussions, issues and pull requests are open; I read them, but cannot promise a quick answer.
-- **It tracks upstream.** Upstream `main` is merged in; nothing upstream is rewritten. Current base: upstream `main` at [`c736e8e`](https://github.com/nikitabobko/AeroSpace/commit/c736e8e) (29 October 2026), after v0.21.3-Beta; the [build notes](docs/personal-build.md#after-merging-upstream) describe how it is merged. [#1944](https://github.com/nikitabobko/AeroSpace/pull/1944) is no longer carried: upstream's workspace restructure picks the replacement workspace correctly on its own.
+- **It tracks upstream.** Upstream `main` is merged in; nothing upstream is rewritten. Current base: upstream `main` through [`c960a8ac`](https://github.com/nikitabobko/AeroSpace/commit/c960a8ac) (31 October 2026), after v0.21.3-Beta; the [build notes](docs/personal-build.md#after-merging-upstream) describe how it is merged. [#1944](https://github.com/nikitabobko/AeroSpace/pull/1944) is no longer carried: upstream's workspace restructure picks the replacement workspace correctly on its own.
 - **#2179 uses a private macOS API.** Upstream has chosen not to ship private APIs. Alpha calls two undocumented SkyLight functions to fix cross-monitor focus. If the symbols are missing, Alpha falls back to stock focus behaviour for the session. If a call fails, it falls back for that request only, and switches the private path off after three failures in a row; restarting AeroSpace retries it.
 - **The config is not backward compatible.** Stock AeroSpace rejects `single-window-width-rules` and the other new keys. Remove them before going back to a stock build.
 - **Building:** releases are produced by the `release-alpha` GitHub workflow, which signs, notarizes and publishes a zip for a given version. Locally, `./build-personal-release.sh` produces a signed app and CLI from a clean working tree; it reads the signing identity from `~/.config/aerospace/env` (see `personal-build.env.example`). Details in the [build notes](docs/personal-build.md).
