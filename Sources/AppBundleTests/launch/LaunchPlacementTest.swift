@@ -3,6 +3,13 @@ import Common
 import Foundation
 import XCTest
 
+@MainActor
+private final class LaunchTestState<Value> {
+    var value: Value
+
+    init(_ value: Value) { self.value = value }
+}
+
 private final class AdapterLifetimeProbe {
     var cancelled = false
 }
@@ -293,19 +300,19 @@ final class LaunchPlacementTest: XCTestCase {
         let h = harness()
         let token = await armed(h)
         let before: UInt32? = 10
-        var after: UInt32? = before
+        let after = LaunchTestState(before)
         let gate = AwaitableOneTimeBroadcastLatch()
         var readStarted = false
         var inserted: TestWindow?
         let reader = Task.startUnstructured { @MainActor in
             readStarted = true
             try? await gate.await(.nonCancellable)
-            guard isInitialWindowRegistrationCurrent(nativeIdBeforeReads: before, nativeIdAfterReads: after) else { return }
+            guard isInitialWindowRegistrationCurrent(nativeIdBeforeReads: before, nativeIdAfterReads: after.value) else { return }
             let data = initialWindowBindingData(windowType: .window, fallbackWorkspace: globalFocus.workspace, placement: h.placement, bundleId: "app", token: token, observation: h.observation())
             inserted = TestWindow.new(id: 2, parent: data.parent)
         }
         await awaitCondition { readStarted }
-        after = nil // Upstream remapped the native tab and displaced this logical placeholder.
+        after.value = nil // Upstream remapped the native tab and displaced this logical placeholder.
         await gate.signalToAll()
         await reader.value
         XCTAssertNil(inserted)
@@ -468,14 +475,14 @@ final class LaunchPlacementTest: XCTestCase {
 
     func testOwnedAdapterIsRetainedWhileDrainingAndReleasedAtExit() async {
         let h = harness()
-        var probe: AdapterLifetimeProbe? = AdapterLifetimeProbe()
-        weak var weakProbe = probe
+        let probe = LaunchTestState<AdapterLifetimeProbe?>(AdapterLifetimeProbe())
+        weak let weakProbe = probe.value
         h.cancellationFactory = {
-            let owned = probe!
+            let owned = probe.value!
             return { owned.cancelled = true }
         }
         _ = await armed(h)
-        probe = nil
+        probe.value = nil
         XCTAssertNotNil(weakProbe)
         h.placement.cancelAll(reason: "disabled")
         XCTAssertNotNil(weakProbe)
