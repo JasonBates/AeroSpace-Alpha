@@ -13,24 +13,52 @@ tested. Wallpaper flicker persisted with AeroSpace fully exited and was resolved
 by selecting fixed 144 Hz on the two affected displays; no border or lifecycle
 source change was needed for that symptom.
 
-The subsequent launch-placement candidate captures the destination workspace
-before app activation. Its first version passed the complete repository gate
-and 673 Swift tests. Native testing then exposed three integration gaps that
-mocked tests did not cover: Ghostty's lowercase executable name, missing Finder
-LaunchServices dates plus its non-window desktop accessibility entry, and the
-need for app adapters to activate the exact window they create.
+The subsequent launch-placement package is `e61af857`, version
+`0.21.3-launch-placement-candidate`. It is installed with the original live
+launch helper restored. The experimental helper is retained in the isolated
+configuration branch, not enabled as the daily launcher. The original source
+checkouts and both earlier candidate/known-good rollback packages remain intact.
 
-The corrected Ghostty adapter has passed a right-monitor placement/focus trial.
-The Comet adapter has passed the same trial with creation-time bounds: its first
-sampled visible frame was already on the requested monitor. Six earlier trials
-verified logical placement across all three monitors but failed full focus
-acceptance; those are not counted as complete UX passes. Existing windows were
-preserved and starting workspace/focus restored after each trial.
+The core captures the destination workspace before app activation. Native tests
+found and repaired Ghostty executable-name detection, Finder's missing
+LaunchServices date and non-window desktop accessibility entry, and exact-window
+activation in app adapters. The repaired source passes **680 Swift tests**, the
+exact clean `./test.sh`, independent review and signed universal release checks.
+The configuration/helper suite passes **70 tests**.
 
-Finder's native bridge repair and the complete integrated launch trial are
-pending. The usual live launcher has been restored while those repairs are
-verified. These checks do not establish completion of the full macOS lifecycle
-checklist or long-term daily-use acceptance.
+The final hands-off shortcut round used `trigger-binding --mode main` and
+recorded no keyboard, mouse-button or mouse-move activity. All six Ghostty/Comet
+launches on the three displays received the requested initial workspace and
+keyboard focus. Comet's sampled visible frames remained on the requested
+monitor in all three trials. Ghostty's first visible frame was on the previous
+monitor in all three, followed by correct AeroSpace placement. Earlier isolated
+Ghostty passes therefore do not establish a reliable visual fix. A separate
+hands-off close-Ghostty/open-Comet sequence on an empty workspace passed
+placement, focus and sampled geometry for both apps.
+
+Finder passed a stable right-workspace placement/focus check but still painted
+its first frame on another display. A different creation-properties form did
+not remove the flash and sometimes left Finder's desktop as its native focused
+element. It was not adopted. Some earlier focus failures were accompanied by
+user input; the user confirmed interacting during testing. Those runs are not
+treated as proof of a core focus-policy defect. No speculative focus hold or
+activation-filter exception was added.
+
+**The no-cross-monitor-flash acceptance criterion is not met for Ghostty or
+Finder.** Ghostty 1.4.0 restores its saved position in `showWindow` before showing
+the window, and later applies cascading in its new-window path. Its installed
+scripting dictionary exposes no per-request initial bounds. This explains why
+correct first WM placement cannot promise correct first app paint; a robust
+next step needs app-side creation control, rather than another post-launch move.
+See the [pinned Ghostty implementation](https://github.com/ghostty-org/ghostty/blob/v1.4.0/macos/Sources/Features/Terminal/TerminalController.swift#L1070).
+
+Test windows were cleaned up and starting workspaces/focus restored. Original
+windows were preserved; one interrupted run left a test Finder window that was
+gone before the subsequent cleanup check, while the original-window check
+remained clean. The test harness was corrected to make cleanup independent of
+focus assertions. Native geometry is sampled metadata, not video proof.
+The full macOS lifecycle checklist and long-term daily-use acceptance remain
+separate from these launch checks.
 
 ## Initial offline acceptance (historical)
 
