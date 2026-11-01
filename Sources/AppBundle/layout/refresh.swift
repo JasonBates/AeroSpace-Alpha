@@ -18,7 +18,7 @@ func enumerationRetryDelaySeconds(attempt: Int) -> Int {
 /// Schedule a delayed complete refresh because some app didn't respond to the window enumeration
 /// request in time. Debounced: at most one pending retry. Upstream PR #2326, issue #1615
 @MainActor
-private func scheduleEnumerationRetry() {
+func scheduleEnumerationRetry() {
     if enumerationRetryTask != nil { return }
     let delaySeconds = enumerationRetryDelaySeconds(attempt: consecutiveEnumerationRetries)
     consecutiveEnumerationRetries += 1
@@ -120,13 +120,8 @@ enum RunSessionGuard: Sendable {
         command is EnableCommand ? .forceRun : .isServerEnabled
     }
     @MainActor
-    static func checkServerIsEnabledOrDie(
-        file: StaticString = #fileID,
-        line: Int = #line,
-        column: Int = #column,
-        function: String = #function,
-    ) -> Self {
-        .isServerEnabled ?? dieT("server is disabled", file: file, line: line, column: column, function: function)
+    static func checkServerIsEnabledOrDie(fileId: MyFileId = #myFileId) -> Self {
+        .isServerEnabled ?? dieT("server is disabled", fileId: fileId)
     }
 }
 
@@ -146,40 +141,24 @@ func refreshModel_nonCancellable() async {
 @MainActor
 private func refresh() async throws {
     // Garbage collect terminated apps and windows before working with all windows
-    let mapping = try await MacApp.refreshAllAndGetAliveWindowIds(frontmostAppBundleId: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+    let mapping = try await MacApp
+        .refreshAllAndGetAliveWindowIds(frontmostAppBundleId: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
     if mapping.values.contains(where: \.incomplete) {
-        // Some app didn't answer in time (e.g. the system is under load during boot). Without a
-        // retry, its new windows stay undetected until the next AX event, which on an idle
-        // system may never come. #1615
         scheduleEnumerationRetry()
     } else {
         consecutiveEnumerationRetries = 0
     }
-    // A mouse-driven native-tab switch can be observed first by this periodic refresh rather
-    // than getFocusedWindow. Preserve the old tree slot before garbage collection removes it.
-    var splicedWindowIds: Set<UInt32> = []
-    for (app, refreshResult) in mapping {
-        if let replacement = refreshResult.nativeTabReplacement,
-           refreshResult.aliveWindowIds.contains(replacement.focusedWindowId)
-        {
-            _ = try await MacWindow.getOrRegister(
-                windowId: replacement.focusedWindowId,
-                macApp: app,
-                replacingNativeTabWindowId: replacement.staleWindowId,
-            )
-            splicedWindowIds.insert(replacement.focusedWindowId)
-        }
-    }
-    let aliveWindowIds = mapping.values.flatMap(\.aliveWindowIds).toSet()
 
-    for window in MacWindow.allWindows {
-        if !aliveWindowIds.contains(window.windowId) {
-            window.garbageCollect(skipClosedWindowsCache: false)
-        }
+    for window in MacWindow.allWindows where mapping[window.macApp]?.windows[window.windowId] == nil {
+        window.garbageCollect(skipClosedWindowsCache: false)
     }
-    for (app, refreshResult) in mapping {
-        for windowId in refreshResult.aliveWindowIds where !splicedWindowIds.contains(windowId) {
-            try await MacWindow.getOrRegister(windowId: windowId, macApp: app)
+    for (app, result) in mapping {
+        app.reconcileKnownWindows(result)
+        for (windowId, lifeStatus) in result.windows {
+            // A focused native tab may arrive before AXWindows; invisible unknown IDs are only
+            // placeholders until a complete enumeration can match them to their logical window.
+            if MacWindow.allWindowsMap[windowId] == nil && !shouldRegisterFocusedWindow(lifeStatus: lifeStatus, incomplete: result.incomplete) { continue }
+            try await MacWindow.getOrRegister(windowId: windowId, macApp: app).lifeStatus = lifeStatus
         }
     }
 
@@ -200,7 +179,7 @@ private func layoutWorkspaces() async throws {
     if !TrayMenuModel.shared.isEnabled {
         FocusMode.shared.stop()
         for workspace in Workspace.all {
-            workspace.allLeafWindowsRecursive.forEach { ($0 as! MacWindow).unhideFromCorner() } // todo as!
+            workspace.allInhabitedLeafWindowsRecursive.forEach { ($0 as! MacWindow).unhideFromCorner() } // todo as!
             try await workspace.layoutWorkspace() // Unhide tiling windows from corner
         }
         FocusedWindowBorder.shared.hide()
@@ -218,13 +197,13 @@ private func layoutWorkspaces() async throws {
     // to reduce flicker, first unhide visible workspaces, then hide invisible ones
     for monitor in monitors {
         let workspace = monitor.visibleWorkspace
-        workspace.allLeafWindowsRecursive.forEach { ($0 as! MacWindow).unhideFromCorner() } // todo as!
+        workspace.allInhabitedLeafWindowsRecursive.forEach { ($0 as! MacWindow).unhideFromCorner() } // todo as!
         try await workspace.layoutWorkspace()
     }
     var coveredSpots: [HideCornerCoverSpot: Rect] = [:]
     for workspace in Workspace.all where !workspace.isVisible {
         let spot = monitorToHideSpot[workspace.workspaceMonitorInfo.rect.topLeftCorner]
-        let windows = workspace.allLeafWindowsRecursive
+        let windows = workspace.allInhabitedLeafWindowsRecursive
         for window in windows {
             try await (window as! MacWindow).hideInCorner(spot?.corner ?? .bottomRightCorner, on: spot?.monitor) // todo as!
         }

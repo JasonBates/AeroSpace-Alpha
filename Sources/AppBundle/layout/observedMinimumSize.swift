@@ -46,9 +46,13 @@ extension Window {
     /// if AeroSpace hasn't laid the window out differently in the meantime.
     @MainActor
     func confirmObservedMinimumSize(requested: CGSize) async throws {
+        let generation = nativeGeometryGeneration
         if !isUnitTest { try await Task.sleep(for: observedMinimumConfirmationDelay) }
-        guard lastAppliedLayoutPhysicalRect?.size == requested,
+        guard generation == nativeGeometryGeneration, lifeStatus == .alive,
+              lastAppliedLayoutPhysicalRect?.size == requested,
               let observed = try await getAxSize(.cancellable) else { return }
+        guard generation == nativeGeometryGeneration, lifeStatus == .alive,
+              lastAppliedLayoutPhysicalRect?.size == requested else { return }
         let updated = observedMinimumSize.updated(requested: requested, observed: observed)
         guard updated != observedMinimumSize else { return }
         observedMinimumSize = updated

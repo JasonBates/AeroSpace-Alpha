@@ -74,7 +74,7 @@ extension [AeroObj] {
         let result = cellTable
             .transposed()
             .map { column in
-                let columndWidth = column.map { $0.value.count }.max().orDie()
+                let columndWidth = column.lazy.map { $0.value.count }.max().orDie()
                 return column.map {
                     $0.rightPadding
                         ? $0.value + String(repeating: " ", count: columndWidth - $0.value.count)
@@ -88,11 +88,13 @@ extension [AeroObj] {
 }
 
 enum Primitive: Encodable {
+    case null
     case bool(Bool)
     case int(Int64)
     case string(String)
 
     enum Kind: String {
+        case null = "Null"
         case bool = "Bool"
         case int = "Int"
         case string = "String"
@@ -100,6 +102,7 @@ enum Primitive: Encodable {
 
     var kind: Kind {
         switch self {
+            case .null: .null
             case .bool: .bool
             case .int: .int
             case .string: .string
@@ -108,6 +111,7 @@ enum Primitive: Encodable {
 
     func toString() -> String {
         switch self {
+            case .null: "null"
             case .bool(let x): x.description
             case .int(let x): x.description
             case .string(let x): x
@@ -115,16 +119,17 @@ enum Primitive: Encodable {
     }
 
     func encode(to encoder: any Encoder) throws {
-        let value: Encodable = switch self {
-            case .bool(let x): x
-            case .int(let x): x
-            case .string(let x): x
-        }
         var container = encoder.singleValueContainer()
-        try container.encode(value)
+        switch self {
+            case .null: try container.encodeNil()
+            case .bool(let x): try container.encode(x)
+            case .int(let x): try container.encode(x)
+            case .string(let x): try container.encode(x)
+        }
     }
 
     public static func int(_ int: UInt32) -> Self { .int(Int64(exactly: int).orDie()) }
+    public static func int(_ int: UInt64) -> Self { .int(Int64(exactly: int).orDie()) }
     public static func int(_ int: Int32) -> Self { .int(Int64(exactly: int).orDie()) }
     public static func int(_ int: Int) -> Self { .int(Int64(exactly: int).orDie()) }
 }
@@ -156,7 +161,8 @@ extension FormatVar {
         switch (obj, self) {
             case (.window(let w), .window(let f)):
                 return switch f {
-                    case .windowId: .success(.int(w.window.windowId))
+                    case .windowId: .success(.int(w.window.windowId.rawId))
+                    case .windowNativeId: .success(w.window.nativeWindowId.map { .int($0) } ?? .null)
                     case .windowIsFullscreen: .success(.bool(w.window.isFullscreen))
                     case .windowTitle: .success(.string(w.title.orDie("Title wasn't prefetched")))
                     case .windowLayout, .windowParentContainerLayout: toLayoutResult(w: w.window)

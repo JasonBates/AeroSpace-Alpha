@@ -2,7 +2,7 @@ import Common
 
 /// The workspace of every window as of the last check. Used to report window-moved events.
 /// Minimized windows are recorded as `minimizedMarker`; workspace names are never empty
-@MainActor private var lastKnownWindowWorkspaces: [UInt32: String] = [:]
+@MainActor private var lastKnownWindowWorkspaces: [OpaqueWindowId: String] = [:]
 private let minimizedMarker = ""
 
 /// Where a window is for window-moved purposes: its workspace name, `minimizedMarker`, or nil if untracked (popups)
@@ -15,7 +15,7 @@ private let minimizedMarker = ""
     lastKnownWindowWorkspaces[window.windowId] = trackedLocation(window)
 }
 
-@MainActor func forgetWindowWorkspace(_ windowId: UInt32) {
+@MainActor func forgetWindowWorkspace(_ windowId: OpaqueWindowId) {
     lastKnownWindowWorkspaces.removeValue(forKey: windowId)
 }
 
@@ -31,7 +31,7 @@ private let minimizedMarker = ""
 @MainActor func collectWindowMovedEvents() -> [ServerEvent] {
     let windows = Workspace.all.flatMap(\.allLeafWindowsRecursive) +
         macosMinimizedWindowsContainer.children.filterIsInstance(of: Window.self)
-    var current: [UInt32: String] = [:]
+    var current: [OpaqueWindowId: String] = [:]
     var events: [ServerEvent] = []
     for window in windows {
         guard let location = trackedLocation(window) else { continue }

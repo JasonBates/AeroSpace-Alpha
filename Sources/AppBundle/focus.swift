@@ -31,7 +31,7 @@ struct LiveFocus: AeroAny, Equatable {
 /// Unlike in LiveFocus, information inside FrozenFocus isn't guaranteed to be self-consistent.
 /// window - workspace - monitor relation could change since the moment object was created
 private struct FrozenFocus: AeroAny, Equatable, Sendable {
-    let windowId: UInt32?
+    let windowId: OpaqueWindowId?
     let workspaceName: String
     // monitorId is not part of the focus. We keep it here only for 'on-focused-monitor-changed' to work
     let monitorId_oneBased: Int
@@ -62,7 +62,7 @@ private struct FrozenFocus: AeroAny, Equatable, Sendable {
 
 @MainActor
 func resolveFocusAfterWindowRemoval(wasFocused: Bool, previousWindow: Window?, workspace: Workspace) -> LiveFocus {
-    if wasFocused, let previousWindow, previousWindow.visualWorkspace == workspace {
+    if wasFocused, let previousWindow, previousWindow.lifeStatus == .alive, previousWindow.visualWorkspace == workspace {
         return LiveFocus(windowOrNil: previousWindow, workspace: workspace)
     }
     return workspace.toLiveFocus()
@@ -100,7 +100,7 @@ extension Workspace {
     @MainActor func focusWorkspace() -> Bool { setFocus(to: toLiveFocus()) }
 
     func toLiveFocus() -> LiveFocus {
-        if let wd = mostRecentNonEmptyWindowRecursive ?? anyLeafWindowRecursive {
+        if let wd = mostRecentNonEmptyWindowRecursive {
             LiveFocus(windowOrNil: wd, workspace: self)
         } else {
             LiveFocus(windowOrNil: nil, workspace: self) // emptyWorkspace

@@ -142,6 +142,16 @@ final class ObservedMinimumSizeTest: XCTestCase {
         assertEquals(window.observedMinimumSize, ObservedMinimumSize())
     }
 
+    func testMinimumConfirmationDiscardsGeometryFromBeforeNativeRemap() async throws {
+        let window = TestWindow.new(id: 1, parent: globalFocus.workspace.rootTilingContainer)
+        let requested = CGSize(width: 500, height: 700)
+        window.lastAppliedLayoutPhysicalRect = Rect(topLeftX: 0, topLeftY: 0, width: 500, height: 700)
+        window.setAxFrame(nil, CGSize(width: 650, height: 800))
+        window.onGetAxSize = { window.invalidateNativeWindowGeometry() }
+        try await window.confirmObservedMinimumSize(requested: requested)
+        assertEquals(window.observedMinimumSize, ObservedMinimumSize())
+    }
+
     func testBalanceSizesForgetsObservedMinimums() async {
         let workspace = globalFocus.workspace
         let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)

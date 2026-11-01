@@ -22,7 +22,8 @@ final class FocusedWindowBorder {
               let window = globalFocus.windowOrNil,
               window.visualWorkspace?.isVisible == true,
               isBorderable(window),
-              let rect = windowServerFrame(windowId: window.windowId),
+              let nativeId = nativeWindowIdForBorder(window),
+              let rect = windowServerFrame(windowId: nativeId),
               rect.width > 0, rect.height > 0,
               !isAwaitingPlacement(window, at: rect)
         else {
@@ -83,6 +84,11 @@ final class FocusedWindowBorder {
                  .macosHiddenAppsWindowsContainer, .macosPopupWindowsContainer, nil: false
         }
     }
+}
+
+@MainActor
+func nativeWindowIdForBorder(_ window: Window) -> UInt32? {
+    window.lifeStatus == .alive ? window.nativeWindowId : nil
 }
 
 /// The window's frame as the WindowServer has it, in AeroSpace's top-left-origin coordinates

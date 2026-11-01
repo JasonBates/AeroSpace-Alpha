@@ -10,25 +10,25 @@ final class TestCommandTest: XCTestCase {
         testParseSingleCommandSucc(
             "test %{app-bundle-id} = foo",
             TestCmdArgs(rawArgs: [])
-                .copy(\.lhs, .initialized(.app(.appBundleId)))
-                .copy(\.infixOperator, .initialized(.equals))
-                .copy(\.rhs, .initialized("foo")),
+                .with(\.lhs, .initialized(.app(.appBundleId)))
+                .with(\.infixOperator, .initialized(.equals))
+                .with(\.rhs, .initialized("foo")),
         )
         testParseSingleCommandSucc(
             "test-not %{app-bundle-id} ~= foo",
             TestNotCmdArgs(rawArgs: [])
-                .copy(\.testArgs.lhs, .initialized(.app(.appBundleId)))
-                .copy(\.testArgs.infixOperator, .initialized(.matchesRegex))
-                .copy(\.testArgs.rhs, .initialized("foo")),
+                .with(\.testArgs.lhs, .initialized(.app(.appBundleId)))
+                .with(\.testArgs.infixOperator, .initialized(.matchesRegex))
+                .with(\.testArgs.rhs, .initialized("foo")),
         )
 
-        testParseCommandFail("test %{foo} = foo", msg: "ERROR: Can\'t parse \'foo\'.\n       Possible values: (window-id|window-is-fullscreen|window-title|window-layout|window-parent-container-layout|workspace|workspace-is-focused|workspace-is-visible|workspace-root-container-layout|app-bundle-id|app-name|app-pid|app-exec-path|app-bundle-path|monitor-id|monitor-appkit-nsscreen-screens-id|monitor-name|monitor-is-main)", exitCode: 2)
+        testParseCommandFail("test %{foo} = foo", msg: "ERROR: Can\'t parse \'foo\'.\n       Possible values: (window-id|window-native-id|window-is-fullscreen|window-title|window-layout|window-parent-container-layout|workspace|workspace-is-focused|workspace-is-visible|workspace-root-container-layout|app-bundle-id|app-name|app-pid|app-exec-path|app-bundle-path|monitor-id|monitor-appkit-nsscreen-screens-id|monitor-name|monitor-is-main)", exitCode: 2)
         testParseCommandFail("test foo = foo", msg: "ERROR: Left hand side must be a single interpolation variable", exitCode: 2)
         testParseCommandFail("test foo%{app-bundle-id} = foo", msg: "ERROR: Left hand side must be a single interpolation variable", exitCode: 2)
         testParseCommandFail("test", msg: "ERROR: Argument \'<lhs>\' is mandatory\nERROR: Argument \'<operator>\' is mandatory\nERROR: Argument \'<rhs>\' is mandatory", exitCode: 2)
         testParseCommandFail("test foo = %{app-bundle-id}", msg: "ERROR: Left hand side must be a single interpolation variable\nERROR: Right hand side doesn\'t allow interpolation variables", exitCode: 2)
         testParseCommandFail("test %{app-bundle-id} = %{app-bundle-id}", msg: "ERROR: Right hand side doesn\'t allow interpolation variables", exitCode: 2)
-        testParseCommandFail("test %{newline} = foo", msg: "ERROR: Can\'t parse \'newline\'.\n       Possible values: (window-id|window-is-fullscreen|window-title|window-layout|window-parent-container-layout|workspace|workspace-is-focused|workspace-is-visible|workspace-root-container-layout|app-bundle-id|app-name|app-pid|app-exec-path|app-bundle-path|monitor-id|monitor-appkit-nsscreen-screens-id|monitor-name|monitor-is-main)", exitCode: 2)
+        testParseCommandFail("test %{newline} = foo", msg: "ERROR: Can\'t parse \'newline\'.\n       Possible values: (window-id|window-native-id|window-is-fullscreen|window-title|window-layout|window-parent-container-layout|workspace|workspace-is-focused|workspace-is-visible|workspace-root-container-layout|app-bundle-id|app-name|app-pid|app-exec-path|app-bundle-path|monitor-id|monitor-appkit-nsscreen-screens-id|monitor-name|monitor-is-main)", exitCode: 2)
         testParseCommandFail("test %{window-id} = %{invalid}", msg: "ERROR: Right hand side doesn\'t allow interpolation variables", exitCode: 2)
     }
 
@@ -56,6 +56,16 @@ final class TestCommandTest: XCTestCase {
             await parseCommand("test %{workspace-is-focused} ~= foo").cmdOrDie.run(.defaultEnv, .emptyStdin),
             CmdResult(stdout: [], stderr: ["Interpolation variable: \'workspace-is-focused\' has a type of Bool. The Bool type is not compatible with \'~=\' operator."], exitCode: Int32ExitCode(rawValue: 2)),
         )
+    }
+
+    func testNativeIdSupportsNullableAndNumericEquality() async {
+        let window = TestWindow.new(id: 1, parent: Workspace.get(byName: name).rootTilingContainer)
+        assertTrue(window.focusWindow())
+        assertEquals((await parseCommand("test %{window-native-id} = null").cmdOrDie.run(.defaultEnv, .emptyStdin)).exitCode.rawValue, 0)
+        assertEquals((await parseCommand("test %{window-native-id} ~= null").cmdOrDie.run(.defaultEnv, .emptyStdin)).exitCode.rawValue, 2)
+        window.nativeWindowIdForTest = 54321
+        assertEquals((await parseCommand("test %{window-native-id} = 54321").cmdOrDie.run(.defaultEnv, .emptyStdin)).exitCode.rawValue, 0)
+        assertEquals((await parseCommand("test %{window-native-id} = 1").cmdOrDie.run(.defaultEnv, .emptyStdin)).exitCode.rawValue, 1)
     }
 
     func testExecNoWindow() async {

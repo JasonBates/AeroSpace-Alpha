@@ -1,7 +1,7 @@
 import AppKit
 import Common
 
-@MainActor private var lastKnownNativeFocusedWindowId: UInt32? = nil
+@MainActor private var lastKnownNativeFocusedWindowId: OpaqueWindowId? = nil
 
 /// Reads the native focused window and adopts it (see updateFocusCache).
 ///
@@ -26,7 +26,9 @@ func isNativeFocusReadingStale(frontmostPidBefore: pid_t?, frontmostPidAfter: pi
 ///                      (from nativeFocused to lastKnownNativeFocusedWindowId)
 /// Alternative names: takeFocusFromMacOs, syncFocusFromMacOs
 @MainActor func updateFocusCache(_ nativeFocused: Window?) {
-    if nativeFocused?.parent is MacosPopupWindowsContainer {
+    if nativeFocused?.parent is MacosPopupWindowsContainer { return }
+    if let nativeFocused, nativeFocused.lifeStatus != .alive {
+        lastKnownNativeFocusedWindowId = nil
         return
     }
     if nativeFocused?.windowId != lastKnownNativeFocusedWindowId {
@@ -48,12 +50,7 @@ func isNativeFocusReadingStale(frontmostPidBefore: pid_t?, frontmostPidAfter: pi
         }
         lastKnownNativeFocusedWindowId = nativeFocused?.windowId
     }
-    // Dialogs/sheets (e.g. Finder's "Connect to Server") aren't native-tab group members. Letting
-    // one become the replacement candidate poisons the comparison: it closes normally later, so
-    // whichever tiled window is actually mid-tab-swap when it closes never gets matched.
-    if !(nativeFocused?.parent is FloatingWindowsContainer) {
-        nativeFocused?.macAppUnsafe.lastNativeFocusedWindowId = nativeFocused?.windowId
-    }
+    nativeFocused?.macAppUnsafe.lastFocusedNativeWindowOpaqueId = nativeFocused?.windowId
 }
 
 /// A window closing never changes the workspace. When the focused window leaves a workspace, macOS hands
@@ -78,10 +75,6 @@ struct WorkspaceFocusHold: Equatable {
           let workspace = window.nodeWorkspace
     else { return nil }
     return WorkspaceFocusHold(workspaceName: workspace.name, since: now)
-}
-
-@MainActor func holdWorkspaceFocusIfFocused(leaving window: Window) {
-    if let hold = workspaceFocusHold(forLeaving: window) { workspaceFocusHold = hold }
 }
 
 /// A held workspace the close left empty has no window to give the keystrokes to, and the window macOS keyed is
@@ -119,6 +112,6 @@ struct WorkspaceFocusHold: Equatable {
     if nativeFocused.visualWorkspace?.isVisible != false { return false }
     let pid = nativeFocused.app.pid
     return Workspace.all.contains { workspace in
-        workspace.isVisible && workspace.allLeafWindowsRecursive.contains { $0.app.pid == pid }
+        workspace.isVisible && workspace.allInhabitedLeafWindowsRecursive.contains { $0.app.pid == pid }
     }
 }

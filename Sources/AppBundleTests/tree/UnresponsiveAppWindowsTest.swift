@@ -34,7 +34,6 @@ final class UnresponsiveAppWindowsTest: XCTestCase {
         var isAppUnresponsive = true
         var axRequests = 0
         let alive = isTrackedWindowAlive(
-            isRetiredNativeTab: false,
             isAppUnresponsive: &isAppUnresponsive,
             containingWindowIdError: { axRequests += 1; return .success },
             windowStillExists: { true },
@@ -43,26 +42,19 @@ final class UnresponsiveAppWindowsTest: XCTestCase {
         assertEquals(axRequests, 0)
     }
 
-    func testRetiredNativeTabIsDeadEvenIfTheAppTimedOut() {
-        for isAppUnresponsiveBefore in [false, true] {
-            var isAppUnresponsive = isAppUnresponsiveBefore
-            var axRequests = 0
-            let alive = isTrackedWindowAlive(
-                isRetiredNativeTab: true,
-                isAppUnresponsive: &isAppUnresponsive,
-                containingWindowIdError: { axRequests += 1; return .cannotComplete },
-                windowStillExists: { true },
-            )
-            XCTAssertFalse(alive)
-            assertEquals(axRequests, 0)
-            assertEquals(isAppUnresponsive, isAppUnresponsiveBefore)
-        }
+    func testIncompleteEnumerationPreservesVisibleAndInvisibleStatuses() {
+        XCTAssertEqual(retainedWindowLifeStatus(previously: .alive, isEnumerated: false, incomplete: true), .alive)
+        XCTAssertEqual(retainedWindowLifeStatus(previously: .invisible, isEnumerated: false, incomplete: true), .invisible)
+        XCTAssertEqual(retainedWindowLifeStatus(previously: nil, isEnumerated: true, incomplete: true), .alive)
+    }
+
+    func testCompleteEnumerationCanMakeWindowInvisible() {
+        XCTAssertEqual(retainedWindowLifeStatus(previously: .alive, isEnumerated: false, incomplete: false), .invisible)
     }
 }
 
 private func isAlive(_ error: AXError, windowStillExists: Bool, _ isAppUnresponsive: inout Bool) -> Bool {
     isTrackedWindowAlive(
-        isRetiredNativeTab: false,
         isAppUnresponsive: &isAppUnresponsive,
         containingWindowIdError: { error },
         windowStillExists: { windowStillExists },

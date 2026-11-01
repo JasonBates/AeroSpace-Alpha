@@ -34,7 +34,7 @@ func hideSpots(_ monitorRects: [Rect]) -> [HideSpot] {
         }
         let important = 10
         let weights = [1, 1, important]
-        return zip(points, weights).map { point, weight in
+        return zip(points, weights).lazy.map { point, weight in
             monitorRects.count(where: { $0.contains(point) }) * weight
         }.reduce(0, +)
     }

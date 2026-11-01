@@ -53,6 +53,47 @@ final class TreeNodeTest: XCTestCase {
         assertEquals(workspace.toLiveFocus().windowOrNil?.windowId, 2)
     }
 
+    func testBindWeightAuto_skipsTombstones() {
+        let root = Workspace.get(byName: name).rootTilingContainer
+        TestWindow.new(id: 1, parent: root, adaptiveWeight: 2)
+        TestWindow.new(id: 2, parent: root, adaptiveWeight: 10).lifeStatus = .invisible
+        TestWindow.new(id: 3, parent: root, adaptiveWeight: 4)
+        TilingContainer.newVTiles(parent: root, adaptiveWeight: 20).lifeStatus = .deadOrInvisible
+
+        let window = TestWindow.new(id: 4, parent: root, adaptiveWeight: WEIGHT_AUTO)
+        assertEquals(window.getWeight(root.orientation), 3) // (2 + 4) / 2
+    }
+
+    func testBindWeightAuto_onlyTombstoneSiblings() {
+        let root = Workspace.get(byName: name).rootTilingContainer
+        TestWindow.new(id: 1, parent: root, adaptiveWeight: 10).lifeStatus = .dead
+
+        let window = TestWindow.new(id: 2, parent: root, adaptiveWeight: WEIGHT_AUTO)
+        assertEquals(window.getWeight(root.orientation), 1)
+    }
+
+    func testRootAbsorptionPreservesOrderWeightsAndMru() {
+        config.enableNormalizationFlattenContainers = true
+        let workspace = Workspace.get(byName: name)
+        let root = workspace.rootTilingContainer
+        let child = TilingContainer.newVTiles(parent: root, adaptiveWeight: 1)
+        child.layout = .accordion
+        let first = TestWindow.new(id: 1, parent: child, adaptiveWeight: 100)
+        let second = TestWindow.new(id: 2, parent: child, adaptiveWeight: 200)
+        let third = TestWindow.new(id: 3, parent: child, adaptiveWeight: 300)
+        assertTrue(second.focusWindow())
+
+        workspace.normalizeContainers()
+        XCTAssertTrue(workspace.rootTilingContainer === root)
+        XCTAssertFalse(child.isBound)
+        assertEquals(root.orientation, .v)
+        assertEquals(root.layout, .accordion)
+        assertEquals(root.children, [first, second, third])
+        assertEquals(root.children.map { $0.getWeight(root.orientation) }, [100, 200, 300])
+        XCTAssertTrue(root.mostRecentChild === second)
+        assertEquals(Array(root._mruChildren), [second, third, first])
+    }
+
     func testNormalizeContainers_dontRemoveRoot() {
         let workspace = Workspace.get(byName: name)
         weak let root = workspace.rootTilingContainer

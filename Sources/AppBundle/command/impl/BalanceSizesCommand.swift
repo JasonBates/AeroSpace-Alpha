@@ -21,13 +21,13 @@ struct BalanceSizesCommand: Command {
     }
 }
 
-@MainActor
-private func balance(_ parent: TilingContainer) {
+@MainActor private func balance(_ parent: TilingContainer) {
+    let inhabitedChildren = parent.inhabitedChildren
     let equalWeight: CGFloat? = switch parent.layout {
-        case .tiles: CGFloat(parent.children.sumOfDouble { $0.getWeight(parent.orientation) }).div(parent.children.count)
+        case .tiles: CGFloat(inhabitedChildren.sumOfDouble { $0.getWeight(parent.orientation) }).div(inhabitedChildren.count)
         case .accordion: nil
     }
-    for child in parent.children {
+    for child in inhabitedChildren {
         switch parent.layout {
             case .tiles: child.setWeight(parent.orientation, equalWeight ?? 1)
             case .accordion: break // Do nothing

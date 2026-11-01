@@ -19,7 +19,7 @@ final class LayoutCommandTest: XCTestCase {
         )
         testParseSingleCommandSucc(
             "layout --root accordion tiles",
-            LayoutCmdArgs(rawArgs: [], toggleBetween: [.accordion, .tiles]).copy(\.root, true),
+            LayoutCmdArgs(rawArgs: [], toggleBetween: [.accordion, .tiles]).with(\.root, true),
         )
         testParseCommandFail(
             "layout --workspace 2 tiles",
@@ -28,7 +28,7 @@ final class LayoutCommandTest: XCTestCase {
         )
         testParseCommandFail(
             "layout --workspace 2 --window-id 2 tiles",
-            msg: "ERROR: Conflicting options: --window-id, --workspace",
+            msg: "ERROR: Conflicting flags: --window-id, --workspace",
             exitCode: 2,
         )
         testParseCommandFail(
@@ -39,7 +39,7 @@ final class LayoutCommandTest: XCTestCase {
 
         testParseSingleCommandSucc(
             "layout --for-next-detected-window floating",
-            LayoutCmdArgs(rawArgs: [], toggleBetween: [.floating]).copy(\.forNextDetectedWindow, true),
+            LayoutCmdArgs(rawArgs: [], toggleBetween: [.floating]).with(\.forNextDetectedWindow, true),
         )
         testParseCommandFail(
             "layout --for-next-detected-window floating tiling",
@@ -53,22 +53,22 @@ final class LayoutCommandTest: XCTestCase {
         )
         testParseCommandFail(
             "layout --for-next-detected-window --window-id 1 floating",
-            msg: "ERROR: Conflicting options: --for-next-detected-window, --window-id",
+            msg: "ERROR: Conflicting flags. This flag: '--for-next-detected-window' conflicts with these flags: --window-id",
             exitCode: 2,
         )
         testParseCommandFail(
             "layout --for-next-detected-window --workspace 2 floating",
-            msg: "ERROR: Conflicting options: --for-next-detected-window, --workspace",
+            msg: "ERROR: Conflicting flags. This flag: '--for-next-detected-window' conflicts with these flags: --workspace",
             exitCode: 2,
         )
         testParseCommandFail(
             "layout --for-next-detected-window --root floating",
-            msg: "ERROR: Conflicting options: --for-next-detected-window, --root",
+            msg: "ERROR: Conflicting flags. This flag: '--for-next-detected-window' conflicts with these flags: --root",
             exitCode: 2,
         )
         testParseCommandFail(
             "layout --for-next-detected-window --fail-if-noop floating",
-            msg: "ERROR: Conflicting options: --fail-if-noop, --for-next-detected-window",
+            msg: "ERROR: Conflicting flags. This flag: '--for-next-detected-window' conflicts with these flags: --fail-if-noop",
             exitCode: 2,
         )
     }
@@ -390,6 +390,50 @@ final class LayoutCommandTest: XCTestCase {
         await parseCommand("layout --root v_accordion").cmdOrDie.run(.defaultEnv, .emptyStdin)
         assertEquals(workspace.rootTilingContainer.layout, .accordion)
         assertEquals(workspace.rootTilingContainer.orientation, .v)
+    }
+
+    func testTiling_mruInsideMustBeFlattenedContainer_bindsOutsideOfIt() async {
+        let workspace = Workspace.get(byName: name)
+        var mruWindow: Window!
+        let root = workspace.rootTilingContainer.apply {
+            TestWindow.new(id: 1, parent: $0)
+            TilingContainer.newHTiles(parent: $0, adaptiveWeight: 1).apply {
+                TestWindow.new(id: 2, parent: $0).lifeStatus = .dead
+                mruWindow = TestWindow.new(id: 3, parent: $0)
+                $0.lifeStatus = .mustBeFlattened
+            }
+        }
+        TestWindow.new(id: 4, parent: workspace.floatingWindowsContainer)
+        mruWindow.markAsMostRecentChild()
+
+        await parseCommand("layout tiling --window-id 4").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(root.layoutDescription, .h_tiles([.window(1), .h_tiles([.window(2), .window(3)]), .window(4)]))
+    }
+
+    func testWindowInsideMustBeFlattenedContainer_targetsAliveAncestor() async {
+        config.enableNormalizationFlattenContainers = true
+
+        var mustBeFlattened: TilingContainer!
+        let root = Workspace.get(byName: name).rootTilingContainer.apply {
+            TestWindow.new(id: 1, parent: $0)
+            mustBeFlattened = TilingContainer.newVTiles(parent: $0, adaptiveWeight: 1).apply {
+                TestWindow.new(id: 2, parent: $0).lifeStatus = .dead
+                assertEquals(TestWindow.new(id: 3, parent: $0).focusWindow(), true)
+                $0.lifeStatus = .mustBeFlattened
+            }
+        }
+
+        let noop = await parseCommand("layout horizontal --fail-if-noop").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(noop.exitCode.rawValue, 2)
+        assertEquals(mustBeFlattened.orientation, .v)
+
+        await parseCommand("layout vertical").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(root.orientation, .v)
+        assertEquals(mustBeFlattened.orientation, .v)
+
+        await parseCommand("layout accordion").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(root.layout, .accordion)
+        assertEquals(mustBeFlattened.layout, .tiles)
     }
 
     func testRoot_withWindowIdFlag_targetsThatWindowsWorkspaceRoot() async {

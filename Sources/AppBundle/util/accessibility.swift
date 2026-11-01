@@ -312,10 +312,10 @@ let kAXAeroSynthetic = "Aero.synthetic"
 private func castToAxUiElementMock(_ a: AnyObject) -> AxUiElementMock {
     if isUnitTest {
         if let str = a as? String, let commaIndex = str.firstIndex(of: ",") {
-            let windowId = UInt32.init(String(str.prefix(upTo: commaIndex)).removePrefix("AXUIElement(AxWindowId="))
+            let windowId = UInt32.init(String(str.prefix(upTo: commaIndex)).removePrefix("AXUIElement(windowId_native="))
             if let windowId {
                 return castToAxUiElementMock([
-                    "Aero.axWindowId": Json.int(windowId),
+                    "Aero.windowId_native": Json.int(windowId),
                     kAXAeroSynthetic: Json.bool(true),
                 ] as AnyObject)
             }
@@ -335,7 +335,7 @@ private func windowOrNil(_ any: Any?) -> WindowIdAndAxUiElementMock? {
     guard let any else { return nil }
     let potentialWindow = castToAxUiElementMock(any as AnyObject)
     // Filter out non-window objects (e.g. Finder's desktop)
-    return switch potentialWindow.containingWindowId() {
+    return switch potentialWindow.containingNativeWindowId() {
         case let windowId?: (windowId, potentialWindow)
         case nil: nil
     }
@@ -369,7 +369,7 @@ extension AXUIElement: AxUiElementMock {
         return AXUIElementSetAttributeValue(self, attr.key as CFString, value) == .success
     }
 
-    func containingWindowId() -> CGWindowID? {
+    func containingNativeWindowId() -> CGWindowID? {
         let state = signposter.beginInterval(#function, "axTaskLocalAppThreadToken: \(axTaskLocalAppThreadToken?.idForDebug)")
         defer { signposter.endInterval(#function, state) }
         var cgWindowId = CGWindowID()
@@ -378,14 +378,19 @@ extension AXUIElement: AxUiElementMock {
             : nil
     }
 
-    /// Same as ``containingWindowId()``, but keeps the error.
+    /// Same as ``containingNativeWindowId()``, but keeps the error.
     /// `.cannotComplete` means that the app didn't respond in time, so it's unknown whether the window is alive.
-    func containingWindowIdError() -> AXError {
+    func containingNativeWindowIdError() -> AXError {
         let state = signposter.beginInterval(#function, "axTaskLocalAppThreadToken: \(axTaskLocalAppThreadToken?.idForDebug)")
         defer { signposter.endInterval(#function, state) }
         var cgWindowId = CGWindowID()
         let error = unsafe _AXUIElementGetWindow(self, &cgWindowId)
         return error == .success && cgWindowId == kCGNullWindowID ? .failure : error
+    }
+
+    var pid: pid_t? {
+        var pid: pid_t = 0
+        return unsafe AXUIElementGetPid(self, &pid) == .success ? pid : nil
     }
 }
 

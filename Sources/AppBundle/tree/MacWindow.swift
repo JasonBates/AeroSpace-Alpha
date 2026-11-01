@@ -5,29 +5,26 @@ final class MacWindow: Window {
     let macApp: MacApp
     private var prevUnhiddenProportionalPositionInsideWorkspaceRect: CGPoint?
 
-    @MainActor
-    private init(_ id: UInt32, _ actor: MacApp, lastFloatingSize: CGSize?, parent: NonLeafTreeNodeObject, adaptiveWeight: CGFloat, index: Int) {
+    @MainActor private init(
+        _ id: OpaqueWindowId,
+        _ actor: MacApp,
+        lastFloatingSize: CGSize?,
+        parent: NonLeafTreeNodeObject,
+        adaptiveWeight: CGFloat,
+        index: Int,
+    ) {
         self.macApp = actor
         super.init(id: id, actor, lastFloatingSize: lastFloatingSize, parent: parent, adaptiveWeight: adaptiveWeight, index: index)
     }
 
-    @MainActor static var allWindowsMap: [UInt32: MacWindow] = [:]
+    @MainActor static var allWindowsMap: [OpaqueWindowId: MacWindow] = [:]
     @MainActor static var allWindows: [MacWindow] { Array(allWindowsMap.values) }
 
     @MainActor
     @discardableResult
-    static func getOrRegister(
-        windowId: UInt32,
-        macApp: MacApp,
-        replacingNativeTabWindowId: UInt32? = nil,
-    ) async throws -> MacWindow {
-        if let existing = existingWindowDiscardingStaleReplacement(windowId: windowId, macApp: macApp, replacingNativeTabWindowId: replacingNativeTabWindowId) {
-            return existing
-        }
-        let rect = try await macApp.getAxRect(windowId, nativeTabReplacementCancellationMode(replacingNativeTabWindowId: replacingNativeTabWindowId))
-        if let replacement = try await replacementWindowIfApplicable(windowId: windowId, macApp: macApp, rect: rect, staleWindowId: replacingNativeTabWindowId) {
-            return replacement
-        }
+    static func getOrRegister(windowId: OpaqueWindowId, macApp: MacApp) async throws -> MacWindow {
+        if let existing = allWindowsMap[windowId] { return existing }
+        let rect = try await macApp.getAxRect(windowId, .cancellable)
         let data = try await unbindAndGetBindingDataForNewWindow(
             windowId,
             macApp,
@@ -39,85 +36,19 @@ final class MacWindow: Window {
         )
 
         // atomic synchronous section
-        if let existing = existingWindowDiscardingStaleReplacement(windowId: windowId, macApp: macApp, replacingNativeTabWindowId: replacingNativeTabWindowId) {
+        if let existing = allWindowsMap[windowId] {
             return existing
-        }
-        if let replacement = try await replacementWindowIfApplicable(windowId: windowId, macApp: macApp, rect: rect, staleWindowId: replacingNativeTabWindowId) {
-            return replacement
         }
         let window = MacWindow(windowId, macApp, lastFloatingSize: rect?.size, parent: data.parent, adaptiveWeight: data.adaptiveWeight, index: data.index)
         window.isAwaitingOnWindowDetected = true
         allWindowsMap[windowId] = window
         defer { window.isAwaitingOnWindowDetected = false }
-        discardNativeTabWindow(replacingNativeTabWindowId, from: macApp)
 
         try await debugWindowsIfRecording(window, .cancellable)
         if try await !restoreClosedWindowsCacheIfNeeded(newlyDetectedWindow: window) {
             await runOnWindowDetected(ifConventional: window)
         }
         return window
-    }
-
-    // A replacement tab is the same logical window as the one it replaces, just under a new AX
-    // window id, so it's spliced into the exact tree slot (parent, index, weight, floating size,
-    // fullscreen state, cached layout geometry) the old one occupied, instead of going through
-    // on-window-detected / MRU placement as if it were a newly opened window.
-    @MainActor
-    private static func registerNativeTabReplacement(windowId: UInt32, macApp: MacApp, rect: Rect?, staleWindowId: UInt32?) -> MacWindow? {
-        guard let staleWindowId, let oldWindow = allWindowsMap[staleWindowId], oldWindow.macApp === macApp,
-              let (_, bindingData) = takeNativeTabReplacementBinding(from: oldWindow)
-        else {
-            return nil
-        }
-        allWindowsMap.removeValue(forKey: oldWindow.windowId)
-
-        let window = MacWindow(
-            windowId,
-            macApp,
-            lastFloatingSize: oldWindow.lastFloatingSize ?? rect?.size,
-            parent: bindingData.parent,
-            adaptiveWeight: bindingData.adaptiveWeight,
-            index: bindingData.index,
-        )
-        window.isFullscreen = oldWindow.isFullscreen
-        window.noOuterGapsInFullscreen = oldWindow.noOuterGapsInFullscreen
-        window.layoutReason = oldWindow.layoutReason
-        window.lastAppliedLayoutVirtualRect = oldWindow.lastAppliedLayoutVirtualRect
-        window.lastAppliedLayoutPhysicalRect = oldWindow.lastAppliedLayoutPhysicalRect
-        window.prevUnhiddenProportionalPositionInsideWorkspaceRect = oldWindow.prevUnhiddenProportionalPositionInsideWorkspaceRect
-        allWindowsMap[windowId] = window
-        return window
-    }
-
-    @MainActor
-    private static func discardNativeTabWindow(_ windowId: UInt32?, from macApp: MacApp) {
-        guard let windowId, let window = allWindowsMap[windowId], window.macApp === macApp else { return }
-        allWindowsMap.removeValue(forKey: windowId)
-        if window.isBound {
-            holdWorkspaceFocusIfFocused(leaving: window)
-            window.unbindFromParent()
-        }
-    }
-
-    @MainActor
-    private static func existingWindowDiscardingStaleReplacement(windowId: UInt32, macApp: MacApp, replacingNativeTabWindowId: UInt32?) -> MacWindow? {
-        guard let existing = allWindowsMap[windowId] else { return nil }
-        if let stale = replacingNativeTabWindowId.flatMap({ allWindowsMap[$0] }), stale.macApp === macApp,
-           isWindowCloseRatherThanTabSwitch(stale: stale, focused: existing)
-        {
-            // Closed the normal way, so window-closed is reported and focus returns to the workspace's previous window
-            stale.garbageCollect(skipClosedWindowsCache: false)
-            return existing
-        }
-        discardNativeTabWindow(replacingNativeTabWindowId, from: macApp)
-        return existing
-    }
-
-    @MainActor
-    private static func replacementWindowIfApplicable(windowId: UInt32, macApp: MacApp, rect: Rect?, staleWindowId: UInt32?) async throws -> MacWindow? {
-        guard let replacement = registerNativeTabReplacement(windowId: windowId, macApp: macApp, rect: rect, staleWindowId: staleWindowId) else { return nil }
-        try await debugWindowsIfRecording(replacement, .cancellable)
-        return replacement
     }
 
     // var description: String {
@@ -144,6 +75,10 @@ final class MacWindow: Window {
         try await macApp.dumpWindowAxInfo(windowId: windowId, cm)
     }
 
+    @MainActor func getWindowLevel(_ cm: CancellationMode) async throws -> MacOsWindowLevel? {
+        try await macApp.getWindowLevel(windowId, cm)
+    }
+
     override func setNativeFullscreen(_ value: Bool) {
         macApp.setNativeFullscreen(windowId, value)
     }
@@ -161,6 +96,7 @@ final class MacWindow: Window {
         if MacWindow.allWindowsMap.removeValue(forKey: windowId) == nil {
             return
         }
+        lifeStatus = .dead
         if let focusHold { workspaceFocusHold = focusHold }
         if !skipClosedWindowsCache { cacheClosedWindowIfNeeded() }
         let parent = unbindFromParent().parent
@@ -294,32 +230,12 @@ final class MacWindow: Window {
     }
 
     override func setAxFrame(_ topLeft: CGPoint?, _ size: CGSize?) {
-        macApp.setAxFrame(windowId, topLeft, size, observedMinimumSize: observedMinimumSize)
+        macApp.setAxFrame(windowId, topLeft, size, observedMinimumSize: observedMinimumSize, nativeGeometryGeneration: nativeGeometryGeneration)
     }
 
     override func getAxRect(_ cm: CancellationMode) async throws -> Rect? {
         try await macApp.getAxRect(windowId, cm)
     }
-}
-
-/// nativeTabReplacementCandidate takes a focused window that vanished from AXWindows for a native tab the app
-/// switched away from. That holds for a new tab, but when the app now focuses a window AeroSpace already manages on
-/// another workspace, the old window closed: tabs of one group share a workspace. Closing a browser window with Cmd-W
-/// keys the browser's window elsewhere, and treating it as a tab switch dropped the closed window without reporting
-/// window-closed or restoring focus to the workspace's previous window. Only ordinary windows: a native fullscreen
-/// window also leaves AXWindows when the user switches away from its Space, and it hasn't closed.
-@MainActor
-func isWindowCloseRatherThanTabSwitch(stale: Window, focused: Window) -> Bool {
-    guard stale.parent is TilingContainer || stale.parent is FloatingWindowsContainer,
-          let staleWorkspace = stale.nodeWorkspace, let focusedWorkspace = focused.nodeWorkspace
-    else { return false }
-    return staleWorkspace != focusedWorkspace
-}
-
-@MainActor
-func takeNativeTabReplacementBinding(from staleWindow: Window?) -> (window: Window, bindingData: BindingData)? {
-    guard let staleWindow, staleWindow.isBound else { return nil }
-    return (staleWindow, staleWindow.unbindFromParent())
 }
 
 extension Window {
@@ -334,8 +250,8 @@ extension Window {
 
 // The function is private because it's unsafe. It leaves the window in unbound state
 @MainActor
-private func unbindAndGetBindingDataForNewWindow(_ windowId: UInt32, _ macApp: MacApp, _ workspace: Workspace, window: Window?, _ cm: CancellationMode) async throws -> BindingData {
-    let windowLevel = try await getWindowLevel(for: windowId, cm)
+private func unbindAndGetBindingDataForNewWindow(_ windowId: OpaqueWindowId, _ macApp: MacApp, _ workspace: Workspace, window: Window?, _ cm: CancellationMode) async throws -> BindingData {
+    let windowLevel = try await macApp.getWindowLevel(windowId, cm)
     return switch try await macApp.getAxUiElementWindowType(windowId, windowLevel, cm) {
         case .popup: BindingData(parent: macosPopupWindowsContainer, adaptiveWeight: WEIGHT_AUTO, index: INDEX_BIND_LAST)
         case .dialog: BindingData(parent: workspace.floatingWindowsContainer, adaptiveWeight: WEIGHT_AUTO, index: INDEX_BIND_LAST)
@@ -347,13 +263,8 @@ private func unbindAndGetBindingDataForNewWindow(_ windowId: UInt32, _ macApp: M
 @MainActor
 private func unbindAndGetBindingDataForNewTilingWindow(_ workspace: Workspace, window: Window?) -> BindingData {
     window?.unbindFromParent() // It's important to unbind to get correct data from below
-    let mruWindow = workspace.mostRecentWindowRecursive
-    if let mruWindow, let tilingParent = mruWindow.parent as? TilingContainer {
-        return BindingData(
-            parent: tilingParent,
-            adaptiveWeight: WEIGHT_AUTO,
-            index: mruWindow.ownIndex.orDie() + 1,
-        )
+    if let (tilingParent, index) = workspace.mostRecentWindowRecursive?.nearestAliveTilingParent() {
+        return BindingData(parent: tilingParent, adaptiveWeight: WEIGHT_AUTO, index: index + 1)
     } else {
         return BindingData(
             parent: workspace.rootTilingContainer,

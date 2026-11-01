@@ -9,40 +9,40 @@ final class EchoCommandTest: XCTestCase {
     func testParse() {
         testParseSingleCommandSucc(
             "echo -- foo",
-            EchoCmdArgs(rawArgs: []).copy(\.args, .initialized([[.literal("foo")]])),
+            EchoCmdArgs(rawArgs: []).with(\.args, .initialized([[.literal("foo")]])),
         )
         testParseSingleCommandSucc(
             "echo -- foo bar",
-            EchoCmdArgs(rawArgs: []).copy(\.args, .initialized([[.literal("foo")], [.literal("bar")]])),
+            EchoCmdArgs(rawArgs: []).with(\.args, .initialized([[.literal("foo")], [.literal("bar")]])),
         )
         testParseSingleCommandSucc(
             "echo --stderr -- foo",
             EchoCmdArgs(rawArgs: [])
-                .copy(\.args, .initialized([[.literal("foo")]]))
-                .copy(\.isStderr, true),
+                .with(\.args, .initialized([[.literal("foo")]]))
+                .with(\.isStderr, true),
         )
         testParseSingleCommandSucc(
             "echo -- '%{window-id}'",
-            EchoCmdArgs(rawArgs: []).copy(\.args, .initialized([[.interVar(.formatVar(.window(.windowId)))]])),
+            EchoCmdArgs(rawArgs: []).with(\.args, .initialized([[.interVar(.formatVar(.window(.windowId)))]])),
         )
         testParseSingleCommandSucc(
             "echo -- 'id: %{window-id}'",
-            EchoCmdArgs(rawArgs: []).copy(\.args, .initialized([[.literal("id: "), .interVar(.formatVar(.window(.windowId)))]])),
+            EchoCmdArgs(rawArgs: []).with(\.args, .initialized([[.literal("id: "), .interVar(.formatVar(.window(.windowId)))]])),
         )
         testParseSingleCommandSucc(
             "echo -- --stderr",
-            EchoCmdArgs(rawArgs: []).copy(\.args, .initialized([[.literal("--stderr")]])),
+            EchoCmdArgs(rawArgs: []).with(\.args, .initialized([[.literal("--stderr")]])),
         )
         testParseSingleCommandSucc(
             "echo -- -h",
-            EchoCmdArgs(rawArgs: []).copy(\.args, .initialized([[.literal("-h")]])),
+            EchoCmdArgs(rawArgs: []).with(\.args, .initialized([[.literal("-h")]])),
         )
 
         testParseCommandFail("echo", msg: "ERROR: Argument '--' is mandatory\nERROR: Argument '<string>' is mandatory", exitCode: 2)
         testParseCommandFail("echo --", msg: "ERROR: Argument '<string>' is mandatory", exitCode: 2)
         testParseCommandFail("echo foo", msg: "ERROR: Expected: --. Got: 'foo'", exitCode: 2)
         testParseCommandFail("echo --stderr foo", msg: "ERROR: Expected: --. Got: 'foo'", exitCode: 2)
-        testParseCommandFail("echo -- %{foo}", msg: "ERROR: Can't parse 'foo'.\n       Possible values: (window-id|window-is-fullscreen|window-title|window-layout|window-parent-container-layout|workspace|workspace-is-focused|workspace-is-visible|workspace-root-container-layout|app-bundle-id|app-name|app-pid|app-exec-path|app-bundle-path|monitor-id|monitor-appkit-nsscreen-screens-id|monitor-name|monitor-is-main|right-padding|newline|tab)", exitCode: 2)
+        testParseCommandFail("echo -- %{foo}", msg: "ERROR: Can't parse 'foo'.\n       Possible values: (window-id|window-native-id|window-is-fullscreen|window-title|window-layout|window-parent-container-layout|workspace|workspace-is-focused|workspace-is-visible|workspace-root-container-layout|app-bundle-id|app-name|app-pid|app-exec-path|app-bundle-path|monitor-id|monitor-appkit-nsscreen-screens-id|monitor-name|monitor-is-main|right-padding|newline|tab)", exitCode: 2)
 
         testParseCommandHelp("echo -h")
         testParseCommandHelp("echo --help")

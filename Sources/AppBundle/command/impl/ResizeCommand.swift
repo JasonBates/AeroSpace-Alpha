@@ -30,11 +30,11 @@ struct ResizeCommand: Command {
         {
             let isInFocusMode = FocusMode.shared.frame(for: window, in: workspace) != nil
             let isAdaptiveLayoutEnabled = config.adaptiveLayout.enabled.getValue(for: workspace.workspaceMonitorInfo)
-            let isAdaptiveLoneTilingWindow = workspace.rootTilingContainer.allLeafWindowsRecursive
+            let isAdaptiveLoneTilingWindow = workspace.rootTilingContainer.allInhabitedLeafWindowsRecursive
                 .filter { !$0.isAwaitingOnWindowDetected }
                 .singleOrNil() === window
             let isLegacyLoneTilingWindow = workspace.rootTilingContainer.hasSingleLeafWindowRecursive &&
-                workspace.rootTilingContainer.anyLeafWindowRecursive === window
+                workspace.rootTilingContainer.allInhabitedLeafWindowsRecursive.first === window
             let focusGeometry = isInFocusMode ? FocusMode.shared.baseGeometry(for: workspace) : nil
             let monitor = focusGeometry?.monitor ?? workspace.workspaceMonitorInfo
             let rect = monitor.visibleRectPaddedByOuterGaps
@@ -70,6 +70,13 @@ struct ResizeCommand: Command {
 
         let candidates = target.windowOrNil?.parentsWithSelf
             .filter { ($0.parent as? TilingContainer)?.layout == .tiles }
+            .filter {
+                guard let parent = $0.parent as? TilingContainer else { return false }
+                return switch parent.lifeStatus {
+                    case .alive: true
+                    case .mustBeFlattened, .deadOrInvisible: false
+                }
+            }
             ?? []
 
         let orientation: Orientation?
@@ -143,10 +150,11 @@ struct ResizeCommand: Command {
             case .subtract(let unit): -CGFloat(unit)
         }
 
-        guard let childDiff = diff.div(parent.children.count - 1) else { return .fail }
-        parent.children.lazy
-            .filter { $0 != node }
-            .forEach { $0.setWeight(parent.orientation, $0.getWeight(parent.orientation) - childDiff) }
+        let inhabitedSiblings = parent.inhabitedChildren.filter { $0 != node }
+        guard let childDiff = diff.div(inhabitedSiblings.count) else { return .fail }
+        for sibling in inhabitedSiblings {
+            sibling.setWeight(parent.orientation, sibling.getWeight(parent.orientation) - childDiff)
+        }
 
         node.setWeight(orientation, node.getWeight(orientation) + diff)
         return .succ

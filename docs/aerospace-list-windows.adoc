@@ -76,7 +76,8 @@ If not specified, the default `<output-format>` is: +
 
 The following variables can be used inside `<output-format>`:
 
-%{window-id}:: Number. Window unique ID
+%{window-id}:: Number. AeroSpace logical window ID; stable across native tab changes, and distinct from the macOS WindowServer ID.
+%{window-native-id}:: Number or null. Current native macOS WindowServer ID. Changes when a logical window changes native tabs; `null` when unavailable. Use `%{window-id}` for AeroSpace commands.
 %{window-title}:: String. Window title
 %{window-is-fullscreen}:: Boolean. Is window in fullscreen by `aerospace fullscreen` command
 %{window-layout}:: String. An alias for `%{window-parent-container-layout}`

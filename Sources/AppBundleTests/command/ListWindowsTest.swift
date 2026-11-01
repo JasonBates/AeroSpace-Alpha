@@ -12,22 +12,22 @@ final class ListWindowsTest: XCTestCase {
         assertEquals(parseCommand("list-windows --pid 1 --focused").errorOrNil, "--focused conflicts with other \"filtering\" flags")
         assertEquals(parseCommand("list-windows --pid 1 --all").errorOrNil, "--all conflicts with \"filtering\" flags. Please use '--monitor all' instead of '--all' alias")
         assertNil(parseCommand("list-windows --all").errorOrNil)
-        assertEquals(parseCommand("list-windows --all --workspace M").errorOrNil, "ERROR: Conflicting options: --all, --workspace")
-        assertEquals(parseCommand("list-windows --all --focused").errorOrNil, "ERROR: Conflicting options: --all, --focused")
-        assertEquals(parseCommand("list-windows --all --count --format %{window-title}").errorOrNil, "ERROR: Conflicting options: --count, --format")
+        assertEquals(parseCommand("list-windows --all --workspace M").errorOrNil, "ERROR: Conflicting flags: --all, --workspace")
+        assertEquals(parseCommand("list-windows --all --focused").errorOrNil, "ERROR: Conflicting flags: --all, --focused")
+        assertEquals(parseCommand("list-windows --all --count --format %{window-title}").errorOrNil, "ERROR: Conflicting flags: --count, --format")
         assertEquals(
             parseCommand("list-windows --all --focused --monitor mouse").errorOrNil,
-            "ERROR: Conflicting options: --all, --focused")
+            "ERROR: Conflicting flags: --all, --focused")
         assertEquals(
             parseCommand("list-windows --all --focused --monitor mouse --workspace focused").errorOrNil,
-            "ERROR: Conflicting options: --all, --focused, --workspace")
+            "ERROR: Conflicting flags: --all, --focused, --workspace")
         assertEquals(
             parseCommand("list-windows --all --workspace focused").errorOrNil,
-            "ERROR: Conflicting options: --all, --workspace")
+            "ERROR: Conflicting flags: --all, --workspace")
         assertNil(parseCommand("list-windows --monitor mouse").errorOrNil)
 
         // --json
-        assertEquals(parseCommand("list-windows --all --count --json").errorOrNil, "ERROR: Conflicting options: --count, --json")
+        assertEquals(parseCommand("list-windows --all --count --json").errorOrNil, "ERROR: Conflicting flags: --count, --json")
         assertEquals(parseCommand("list-windows --all --format '%{right-padding}' --json").errorOrNil, "%{right-padding} interpolation variable is not allowed when --json is used")
         assertEquals(parseCommand("list-windows --all --format '%{window-title} |' --json").errorOrNil, "Only interpolation variables and spaces are allowed in \'--format\' when \'--json\' is used")
         assertNil(parseCommand("list-windows --all --format '%{window-title}' --json").errorOrNil)
@@ -74,6 +74,35 @@ final class ListWindowsTest: XCTestCase {
         }
     }
 
+    func testNativeIdFormatKeepsLogicalAndNativeIdsSeparate() async throws {
+        let window = TestWindow.new(id: OpaqueWindowId(4_294_967_301), parent: Workspace.get(byName: name).rootTilingContainer)
+        window.nativeWindowIdForTest = 54321
+        let command = "list-windows --all --format '%{window-id} %{window-native-id} %{app-pid}'"
+        let first = await parseCommand(command).cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(first.exitCode.rawValue, 0)
+        assertEquals(first.stdout, ["4294967301 54321 \(window.app.pid)"])
+        window.nativeWindowIdForTest = 12345
+        let second = await parseCommand(command).cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(second.stdout, ["4294967301 12345 \(window.app.pid)"])
+
+        let json = await parseCommand(command + " --json").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        let rows = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(json.stdout.joined().utf8)) as? [[String: Any]])
+        assertEquals((rows.first?["window-id"] as? NSNumber)?.uint64Value, 4_294_967_301)
+        assertEquals((rows.first?["window-native-id"] as? NSNumber)?.uint32Value, 12345)
+    }
+
+    func testUnavailableNativeIdIsNullInTextAndJson() async throws {
+        TestWindow.new(id: 42, parent: Workspace.get(byName: name).rootTilingContainer)
+        let command = "list-windows --all --format '%{window-id} %{window-native-id}'"
+        let text = await parseCommand(command).cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(text.exitCode.rawValue, 0)
+        assertEquals(text.stdout, ["42 null"])
+        let json = await parseCommand(command + " --json").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        let rows = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(json.stdout.joined().utf8)) as? [[String: Any]])
+        XCTAssertTrue(rows.first?["window-native-id"] is NSNull)
+        assertEquals((rows.first?["window-id"] as? NSNumber)?.uint64Value, 42)
+    }
+
     func testRunFocusedNoWindow() async {
         let result = await parseCommand("list-windows --focused --format '%{window-id}'").cmdOrDie.run(.defaultEnv, .emptyStdin)
         assertEquals(result.exitCode.rawValue, 2)
@@ -109,6 +138,22 @@ final class ListWindowsTest: XCTestCase {
         let result = await parseCommand("list-windows --all --count").cmdOrDie.run(.defaultEnv, .emptyStdin)
         assertEquals(result.exitCode.rawValue, 0)
         assertEquals(result.stdout, ["3"])
+    }
+
+    func testRunAllSkipsTombstones() async {
+        let workspace = Workspace.get(byName: "a")
+        TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
+        TestWindow.new(id: 2, parent: workspace.rootTilingContainer).lifeStatus = .dead
+        TestWindow.new(id: 3, parent: workspace.rootTilingContainer).lifeStatus = .invisible
+        TestWindow.new(id: 4, parent: Workspace.get(byName: "b").rootTilingContainer).lifeStatus = .invisible
+
+        let list = await parseCommand("list-windows --all --format '%{window-id}'").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(list.exitCode.rawValue, 0)
+        assertEquals(list.stdout, ["1"])
+
+        let count = await parseCommand("list-windows --all --count").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(count.exitCode.rawValue, 0)
+        assertEquals(count.stdout, ["1"])
     }
 
     func testRunJson() async {

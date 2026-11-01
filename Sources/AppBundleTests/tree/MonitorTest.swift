@@ -1,4 +1,5 @@
 @testable import AppBundle
+import Common
 import XCTest
 
 @MainActor

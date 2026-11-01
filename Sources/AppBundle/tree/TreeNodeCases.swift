@@ -28,6 +28,13 @@ enum NonLeafTreeNodeCases {
 enum TilingTreeNodeCases {
     case window(Window)
     case tilingContainer(TilingContainer)
+
+    var isInhabited: Bool {
+        switch self {
+            case .window(let it): it.lifeStatus.isInhabited
+            case .tilingContainer(let it): it.lifeStatus.isInhabited
+        }
+    }
 }
 
 enum WindowParentCases {
@@ -183,16 +190,9 @@ func getChildParentRelation(child: TreeNode, parent: NonLeafTreeNodeObject) -> C
     illegalChildParentRelation(child: child, parent: parent)
 }
 
-func illegalChildParentRelation(
-    child: TreeNode,
-    parent: NonLeafTreeNodeObject?,
-    file: StaticString = #fileID,
-    line: Int = #line,
-    column: Int = #column,
-    function: String = #function,
-) -> Never {
+func illegalChildParentRelation(child: TreeNode, parent: NonLeafTreeNodeObject?, fileId: MyFileId = #myFileId) -> Never {
     let msg = "Illegal child-parent relation. Child: \(child), Parent: \((parent ?? child.parent).prettyDescription)"
-    die(msg, file: file, line: line, column: column, function: function)
+    die(msg, fileId: fileId)
 }
 
 func getChildParentRelationOrNil(child: TreeNode, parent: NonLeafTreeNodeObject) -> ChildParentRelation? {

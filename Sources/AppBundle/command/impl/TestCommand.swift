@@ -33,6 +33,10 @@ struct TestCommand: Command {
             """
 
         let result: Result<Bool, String> = switch (lhs, infixOperator) {
+            case (.null, .equals):
+                .success(rhs == "null")
+            case (.null, .matchesRegex):
+                .failure(incompatibleLhsAndOperatorMsg)
             case (.bool(let lhs), .equals):
                 Bool(rhs).toResult("Can't convert String \(rhs.singleQuoted) to Bool").map { rhs in lhs == rhs }
             case (.bool, .matchesRegex):

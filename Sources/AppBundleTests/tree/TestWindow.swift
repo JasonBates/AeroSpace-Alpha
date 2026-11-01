@@ -1,9 +1,13 @@
 @testable import AppBundle
 import AppKit
+import Common
 
 final class TestWindow: Window, CustomStringConvertible {
     private var _rect: Rect?
+    var nativeWindowIdForTest: UInt32?
+    override var nativeWindowId: UInt32? { nativeWindowIdForTest }
     var isMacosFullscreenForTest = false
+    var onGetAxSize: (@MainActor () -> Void)?
     var onGetAxRect: (@MainActor () -> Void)?
     var rejectAxFrameChangesForTest = false
     /// Like a real app, the window refuses to be made smaller than this
@@ -11,14 +15,14 @@ final class TestWindow: Window, CustomStringConvertible {
     var setAxFrameCallCountForTest = 0
 
     @MainActor
-    private init(_ id: UInt32, _ parent: NonLeafTreeNodeObject, _ adaptiveWeight: CGFloat, _ rect: Rect?) {
+    private init(_ id: OpaqueWindowId, _ parent: NonLeafTreeNodeObject, _ adaptiveWeight: CGFloat, _ rect: Rect?) {
         _rect = rect
         super.init(id: id, TestApp.shared, lastFloatingSize: nil, parent: parent, adaptiveWeight: adaptiveWeight, index: INDEX_BIND_LAST)
     }
 
     @discardableResult
     @MainActor
-    static func new(id: UInt32, parent: NonLeafTreeNodeObject, adaptiveWeight: CGFloat = 1, rect: Rect? = nil) -> TestWindow {
+    static func new(id: OpaqueWindowId, parent: NonLeafTreeNodeObject, adaptiveWeight: CGFloat = 1, rect: Rect? = nil) -> TestWindow {
         let wi = TestWindow(id, parent, adaptiveWeight, rect)
         TestApp.shared._windows.append(wi)
         return wi
@@ -45,7 +49,9 @@ final class TestWindow: Window, CustomStringConvertible {
     }
 
     @MainActor override func getAxSize(_ cm: CancellationMode) async throws -> CGSize? {
-        _rect.map { CGSize(width: $0.width, height: $0.height) }
+        onGetAxSize?()
+        onGetAxSize = nil
+        return _rect.map { CGSize(width: $0.width, height: $0.height) }
     }
 
     override func setAxFrame(_ topLeft: CGPoint?, _ size: CGSize?) {
@@ -65,4 +71,8 @@ final class TestWindow: Window, CustomStringConvertible {
     override func setNativeFullscreen(_ value: Bool) {
         isMacosFullscreenForTest = value
     }
+}
+
+extension OpaqueWindowId: ExpressibleByIntegerLiteral {
+    public init(integerLiteral value: UInt64) { self.init(value) }
 }

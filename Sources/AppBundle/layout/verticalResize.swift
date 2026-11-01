@@ -102,7 +102,7 @@ func minimumTiledPhysicalHeight(
         case .tiles:
             return childMinimums.max() ?? 1
         case .accordion where container.orientation == .v:
-            return children.indices.map { index in
+            return children.indices.lazy.map { index in
                 let padding = configuredAccordionVerticalPadding(container, children: children, index: index)
                 return childMinimums[index] + padding.top + padding.bottom
             }.max() ?? 1

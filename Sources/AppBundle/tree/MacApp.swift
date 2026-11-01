@@ -7,25 +7,17 @@ import PrivateApi
 let privateFocusApiInUseKey = "private-focus-api-in-use"
 let privateFocusApiDisabledKey = "private-focus-api-disabled-after-crash"
 
-struct NativeTabWindowReplacement: Sendable {
-    let focusedWindowId: UInt32
-    let staleWindowId: UInt32
-}
-
 struct MacAppRefreshResult: Sendable {
-    let aliveWindowIds: [UInt32]
-    let nativeTabReplacement: NativeTabWindowReplacement?
-    /// The app didn't answer an AX request in time (busy, or the system is under load during boot),
-    /// so new windows of the app may be missing from aliveWindowIds. The caller schedules a retry.
-    /// https://github.com/nikitabobko/AeroSpace/issues/1615 (upstream PR #2326)
+    let windows: [OpaqueWindowId: WindowLifeStatus]
+    /// An AX timeout leaves enumeration incomplete; retry without treating it as closure or a tab swap.
     let incomplete: Bool
 
-    static let empty = MacAppRefreshResult(aliveWindowIds: [], nativeTabReplacement: nil, incomplete: false)
+    static let empty = MacAppRefreshResult(windows: [:], incomplete: false)
 }
 
 // Potential alternative implementation
 // https://github.com/swiftlang/swift-evolution/blob/main/proposals/0392-custom-actor-executors.md
-// (only available since macOS 14)
+// (only available since #macos14)
 final class MacApp: AbstractApp {
     /*conforms*/ let pid: Int32
     /*conforms*/ let rawAppBundleId: String?
@@ -34,14 +26,15 @@ final class MacApp: AbstractApp {
     private let axApp: ThreadGuardedValue<AXUIElement>
     private let appAxSubscriptions: ThreadGuardedValue<[AxSubscription]> // keep subscriptions in memory
     private let windows: ThreadGuardedValue<[UInt32: AxWindow]> = .init([:])
-    // Native tabs reuse one visible frame while swapping AX window IDs. Once an ID is replaced,
-    // keep it retired even if AXWindows reports it again transiently; focusing/detaching it makes
-    // it eligible again. Without this memory, periodic refreshes resurrect inactive tabs.
-    private let retiredNativeTabWindowIds: ThreadGuardedValue<Set<UInt32>> = .init([])
+    private var focusedWindowAwaitingEnumeration: UInt32?
     private var windowsCount = 0
-    var lastNativeFocusedWindowId: UInt32? = nil
+    var lastFocusedNativeWindowOpaqueId: OpaqueWindowId? = nil
     private var thread: Thread?
-    private var setFrameJobs: [UInt32: RunLoopJob] = [:]
+    private var setFrameJobs: [OpaqueWindowId: RunLoopJob] = [:]
+    // Never pruned: while the screen is locked, AX reports windows as gone, and closedWindowsCache matches
+    // the windows re-detected after unlock by their OpaqueWindowId
+    // todo: start prunning after we get rid of closedWindowsCache
+    private var windowIdMapping = BiDictionary<OpaqueWindowId, UInt32>()
     @MainActor private static var focusJob: RunLoopJob? = nil
     @MainActor fileprivate static var isPrivateFocusDisabledForProcess = false
     @MainActor fileprivate static var privateFocusConsecutiveFailures = 0
@@ -93,7 +86,7 @@ final class MacApp: AbstractApp {
             $axTaskLocalAppThreadToken.withValue(AxAppThreadToken(pid: pid, idForDebug: nsApp.idForDebug)) {
                 let axApp = AXUIElementCreateApplication(pid)
                 let handlers: HandlerToNotifKeyMapping = unsafe [
-                    (refreshObs, [kAXWindowCreatedNotification, kAXFocusedWindowChangedNotification]),
+                    (refreshObs, [kAXWindowCreatedNotification, kAXFocusedWindowChangedNotification, kAXMainWindowChangedNotification]),
                 ]
                 let job = RunLoopJob(.cancellable)
                 let subscriptions = (try? unsafe AxSubscription.bulkSubscribe(pid, axApp, job, handlers)) ?? []
@@ -102,7 +95,6 @@ final class MacApp: AbstractApp {
 
                 let appAxSubscriptionsThreadGuarded = app?.appAxSubscriptions
                 let windowsThreadGuarded = app?.windows
-                let retiredNativeTabWindowIdsThreadGuarded = app?.retiredNativeTabWindowIds
                 let axAppThreadGuarded = app?.axApp
 
                 Task.startUnstructured { @MainActor in
@@ -115,7 +107,6 @@ final class MacApp: AbstractApp {
 
                     // Destroy AX objects in reverse order of their creation
                     appAxSubscriptionsThreadGuarded?.destroy()
-                    retiredNativeTabWindowIdsThreadGuarded?.destroy()
                     windowsThreadGuarded?.destroy()
                     axAppThreadGuarded?.destroy()
                 }
@@ -128,18 +119,30 @@ final class MacApp: AbstractApp {
         return allAppsMap[pid]
     }
 
-    func closeAndUnregisterAxWindow(_ windowId: UInt32) {
+    func nativeWindowId(of windowId: OpaqueWindowId) -> UInt32? { windowIdMapping.forward[windowId] }
+
+    func opaqueWindowId(of nativeWindowId: UInt32) -> OpaqueWindowId? { windowIdMapping.backward[nativeWindowId] }
+
+    @MainActor private func getOrRegisterOpaqueWindowId(_ nativeWindowId: UInt32) -> OpaqueWindowId {
+        if let existing = windowIdMapping.backward[nativeWindowId] { return existing }
+        let windowId = OpaqueWindowId.nextUniqId()
+        windowIdMapping.put(windowId, nativeWindowId)
+        return windowId
+    }
+
+    func closeAndUnregisterAxWindow(_ windowId: OpaqueWindowId) {
         if serverArgs.isReadOnly { return }
         setFrameJobs.removeValue(forKey: windowId)?.cancel()
+        guard let nativeWindowId = windowIdMapping.forward[windowId] else { return }
         _ = withWindowAsync(windowId, .cancellable) { [windows] window, job in
             guard let closeButton = window.get(Ax.closeButtonAttr) else { return }
             if AXUIElementPerformAction(closeButton.cast, kAXPressAction as CFString) == .success {
-                windows.threadGuarded.removeValue(forKey: windowId)
+                windows.threadGuarded.removeValue(forKey: nativeWindowId)
             }
         }
     }
 
-    func getAxSize(_ windowId: UInt32, _ cm: CancellationMode) async throws -> CGSize? {
+    func getAxSize(_ windowId: OpaqueWindowId, _ cm: CancellationMode) async throws -> CGSize? {
         try await withWindow(windowId, cm) { window, job in
             window.get(Ax.sizeAttr)
         }
@@ -147,53 +150,30 @@ final class MacApp: AbstractApp {
 
     // todo merge together with detectNewWindows
     func getFocusedWindow(_ cm: CancellationMode) async throws -> Window? {
-        // Read on this (the caller's) actor, before hopping to the dedicated AX thread below,
-        // mirroring how lastNativeFocusedWindowId is written in updateFocusCache.
-        let previousFocusedWindowId = lastNativeFocusedWindowId
-        let focused = try await thread?.runInLoop(cm) { [pid, axApp, windows, retiredNativeTabWindowIds, previousFocusedWindowId] job -> (UInt32, UInt32?)? in
-            guard let axFocusedWindow = axApp.threadGuarded.get(Ax.focusedWindowAttr),
-                  let focusedWindow = try windows.threadGuarded.getOrRegisterAxWindow(
-                      windowId: axFocusedWindow.windowId,
-                      axFocusedWindow.ax.cast,
-                      pid,
-                      job,
-                  )
-            else {
-                return nil
-            }
-            var retiredIds = retiredNativeTabWindowIds.threadGuarded
-            // A focused retired tab is either being selected again or was detached into its own
-            // window. In both cases it is visible now and must be managed again.
-            retiredIds.remove(focusedWindow.windowId)
-            retiredNativeTabWindowIds.threadGuarded = retiredIds
-
-            let liveWindowIds = Set((axApp.threadGuarded.get(Ax.windowsAttr) ?? []).map(\.windowId))
-            guard let previousFocusedWindowId = nativeTabReplacementCandidate(
-                previousFocusedWindowId: previousFocusedWindowId,
-                focusedWindowId: focusedWindow.windowId,
-                liveWindowIds: liveWindowIds,
-                trackedWindowIds: Set(windows.threadGuarded.keys),
-                isMouseButtonDown: isLeftMouseButtonDown,
-            ) else { return (focusedWindow.windowId, nil) }
-            // Apps that fold native tabs into one titlebar (Finder, Ghostty, Fork) keep the old
-            // tab's AX object alive after switching away from it, but drop it from AXWindows.
-            // Scoped to the just-focused-a-moment-ago window only, since that one is guaranteed
-            // to have been on the active Space - a blanket AXWindows/tracked-set intersection
-            // would not be (see windowsAttr's doc comment).
-            windows.threadGuarded.removeValue(forKey: previousFocusedWindowId)
-            retiredIds = retiredNativeTabWindowIds.threadGuarded
-            retiredIds.insert(previousFocusedWindowId)
-            retiredNativeTabWindowIds.threadGuarded = retiredIds
-            return (focusedWindow.windowId, previousFocusedWindowId)
+        let nativeWindowId = try await thread?.runInLoop(cm) { [pid, axApp, windows] job in
+            try axApp.threadGuarded.get(Ax.focusedWindowAttr)
+                .flatMap { try windows.threadGuarded.getOrRegisterAxWindow(windowId: $0.windowId, $0.ax.cast, pid, job) }?
+                .windowId
         }
-        guard let (windowId, staleWindowId) = focused else { return nil }
-        if let staleWindowId {
-            setFrameJobs.removeValue(forKey: staleWindowId)?.cancel()
+        guard let nativeWindowId else { return nil }
+        focusedWindowAwaitingEnumeration = opaqueWindowId(of: nativeWindowId).flatMap { MacWindow.allWindowsMap[$0] } == nil
+            ? nativeWindowId : nil
+        // Resolve tab swaps before registering the focused native ID. Otherwise a new tab would
+        // emit window-detected and run callbacks before refresh discovers its existing logical window.
+        let result = try await refreshAndGetAliveWindowIds(frontmostAppBundleId: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+        reconcileKnownWindows(result)
+        if result.incomplete { scheduleEnumerationRetry() }
+        guard let windowId = opaqueWindowId(of: nativeWindowId) else { return nil }
+        // AXFocusedWindow can report a new tab one refresh before AXWindows. Delay its first
+        // registration until it is enumerated, so the next complete refresh can remap it atomically.
+        guard shouldRegisterFocusedWindow(lifeStatus: result.windows[windowId], incomplete: result.incomplete) else {
+            return MacWindow.allWindowsMap[windowId]
         }
-        return try await MacWindow.getOrRegister(windowId: windowId, macApp: self, replacingNativeTabWindowId: staleWindowId)
+        focusedWindowAwaitingEnumeration = nil
+        return try await MacWindow.getOrRegister(windowId: windowId, macApp: self)
     }
 
-    @MainActor func nativeFocus(_ windowId: UInt32) {
+    @MainActor func nativeFocus(_ windowId: OpaqueWindowId) {
         if serverArgs.isReadOnly { return }
         MacApp.focusJob?.cancel()
         // #101: the public path below can't reliably key the *requested* window of a multi-window app
@@ -206,9 +186,10 @@ final class MacApp: AbstractApp {
             !MacApp.isPrivateFocusDisabledForProcess
         if shouldUsePrivateFocus, aeroPrivateFocusAvailable()
         {
+            guard let nativeWindowId = nativeWindowId(of: windowId) else { return }
             MacApp.focusJob = withWindowAsync(windowId, .cancellable) { [pid, nsApp] window, job in
                 UserDefaults.standard.set(true, forKey: privateFocusApiInUseKey)
-                let didFocus = aeroMakeKeyWindow(pid, windowId)
+                let didFocus = aeroMakeKeyWindow(pid, nativeWindowId)
                 UserDefaults.standard.set(false, forKey: privateFocusApiInUseKey)
                 if didFocus {
                     Task.startUnstructured { @MainActor in recordPrivateFocusSuccess() }
@@ -233,7 +214,7 @@ final class MacApp: AbstractApp {
         // (important for apps which are slow at responding even such basic AX requests. E.g. Godot)
         // Beware of the macOS bug: https://github.com/nikitabobko/AeroSpace/issues/101
         if (!NSScreen.screensHaveSeparateSpaces || globalUnsortedMonitorInfos.count == 1) &&
-            (lastNativeFocusedWindowId == windowId || windowsCount == 1)
+            (lastFocusedNativeWindowOpaqueId == windowId || windowsCount == 1)
         {
             nsApp.activate(options: .activateIgnoringOtherApps)
         } else {
@@ -249,7 +230,7 @@ final class MacApp: AbstractApp {
         }
     }
 
-    func setAxFrame(_ windowId: UInt32, _ topLeft: CGPoint?, _ size: CGSize?, observedMinimumSize: ObservedMinimumSize) {
+    func setAxFrame(_ windowId: OpaqueWindowId, _ topLeft: CGPoint?, _ size: CGSize?, observedMinimumSize: ObservedMinimumSize, nativeGeometryGeneration: Int) {
         setFrameJobs.removeValue(forKey: windowId)?.cancel()
         setFrameJobs[windowId] = withWindowAsync(windowId, .cancellable) { [axApp] window, job in
             try disableAnimations(app: axApp.threadGuarded, job) {
@@ -261,12 +242,13 @@ final class MacApp: AbstractApp {
             guard let observed = window.get(Ax.sizeAttr),
                   observedMinimumSize.updated(requested: size, observed: observed) != observedMinimumSize else { return }
             Task.startUnstructured { @MainActor in
-                try await Window.get(byId: windowId)?.confirmObservedMinimumSize(requested: size)
+                guard let current = Window.get(byId: windowId), current.nativeGeometryGeneration == nativeGeometryGeneration else { return }
+                try await current.confirmObservedMinimumSize(requested: size)
             }
         }
     }
 
-    func setAxFrameForTermination(_ windowId: UInt32, _ topLeft: CGPoint?, _ size: CGSize?) {
+    func setAxFrameForTermination(_ windowId: OpaqueWindowId, _ topLeft: CGPoint?, _ size: CGSize?) {
         setFrameJobs.removeValue(forKey: windowId)?.cancel()
         let semaphore = DispatchSemaphore(value: 0)
         let job = withWindowAsync(windowId, .nonCancellable) { [axApp] window, job in
@@ -287,16 +269,16 @@ final class MacApp: AbstractApp {
         }
     }
 
-    func getAxRect(_ windowId: UInt32, _ cm: CancellationMode) async throws -> Rect? {
+    func getAxRect(_ windowId: OpaqueWindowId, _ cm: CancellationMode) async throws -> Rect? {
         try await withWindow(windowId, cm) { window, job in
-            try AppBundle.getAxRect(window: window, job: job)
+            try AppBundle::getAxRect(window: window, job: job)
         }
     }
 
-    func getAxRectForTermination(_ windowId: UInt32) -> Rect? {
+    func getAxRectForTermination(_ windowId: OpaqueWindowId) -> Rect? {
         let future = CompletableFuture<Rect?>()
         let job = withWindowAsync(windowId, .nonCancellable) { window, job in
-            future.complete(try AppBundle.getAxRect(window: window, job: job))
+            future.complete(try AppBundle::getAxRect(window: window, job: job))
         }
         return switch job.isCancelled {
             case true: nil
@@ -304,39 +286,39 @@ final class MacApp: AbstractApp {
         }
     }
 
-    func isWindowHeuristic(_ windowId: UInt32, _ windowLevel: MacOsWindowLevel?, _ cm: CancellationMode) async throws -> Bool {
+    func isWindowHeuristic(_ windowId: OpaqueWindowId, _ windowLevel: MacOsWindowLevel?, _ cm: CancellationMode) async throws -> Bool {
         return try await withWindow(windowId, cm) { [nsApp, axApp, appId] window, job in
             window.isWindowHeuristic(axApp: axApp.threadGuarded, appId, nsApp.activationPolicy, windowLevel)
         } == true
     }
 
-    func getAxUiElementWindowType(_ windowId: UInt32, _ windowLevel: MacOsWindowLevel?, _ cm: CancellationMode) async throws -> AxUiElementWindowType {
+    func getAxUiElementWindowType(_ windowId: OpaqueWindowId, _ windowLevel: MacOsWindowLevel?, _ cm: CancellationMode) async throws -> AxUiElementWindowType {
         return try await withWindow(windowId, cm) { [nsApp, axApp, appId] window, job in
             window.getWindowType(axApp: axApp.threadGuarded, appId, nsApp.activationPolicy, windowLevel)
         } ?? .window
     }
 
-    func isDialogHeuristic(_ windowId: UInt32, _ windowLevel: MacOsWindowLevel?, _ cm: CancellationMode) async throws -> Bool {
+    func isDialogHeuristic(_ windowId: OpaqueWindowId, _ windowLevel: MacOsWindowLevel?, _ cm: CancellationMode) async throws -> Bool {
         try await withWindow(windowId, cm) { [appId] window, job in
             window.isDialogHeuristic(appId, windowLevel)
         } == true
     }
 
-    func setNativeFullscreen(_ windowId: UInt32, _ value: Bool) {
+    func setNativeFullscreen(_ windowId: OpaqueWindowId, _ value: Bool) {
         setFrameJobs.removeValue(forKey: windowId)?.cancel()
         setFrameJobs[windowId] = withWindowAsync(windowId, .cancellable) { window, job in
             window.set(Ax.isFullscreenAttr, value)
         }
     }
 
-    func setNativeMinimized(_ windowId: UInt32, _ value: Bool) {
+    func setNativeMinimized(_ windowId: OpaqueWindowId, _ value: Bool) {
         setFrameJobs.removeValue(forKey: windowId)?.cancel()
         setFrameJobs[windowId] = withWindowAsync(windowId, .cancellable) { window, job in
             window.set(Ax.minimizedAttr, value)
         }
     }
 
-    func dumpWindowAxInfo(windowId: UInt32, _ cm: CancellationMode) async throws -> [String: Json] {
+    func dumpWindowAxInfo(windowId: OpaqueWindowId, _ cm: CancellationMode) async throws -> [String: Json] {
         try await withWindow(windowId, cm) { window, job in
             dumpAxRecursive(window, .window)
         } ?? [:]
@@ -348,25 +330,32 @@ final class MacApp: AbstractApp {
         } ?? [:]
     }
 
-    func getAxTitle(_ windowId: UInt32, _ cm: CancellationMode) async throws -> String? {
+    func getAxTitle(_ windowId: OpaqueWindowId, _ cm: CancellationMode) async throws -> String? {
         try await withWindow(windowId, cm) { window, job in
             window.get(Ax.titleAttr)
         }
     }
 
-    func isMacosNativeFullscreen(_ windowId: UInt32, _ cm: CancellationMode) async throws -> Bool? {
+    func isMacosNativeFullscreen(_ windowId: OpaqueWindowId, _ cm: CancellationMode) async throws -> Bool? {
         try await withWindow(windowId, cm) { window, job in
             window.get(Ax.isFullscreenAttr)
         }
     }
 
-    func isMacosNativeMinimized(_ windowId: UInt32, _ cm: CancellationMode) async throws -> Bool? {
+    func isMacosNativeMinimized(_ windowId: OpaqueWindowId, _ cm: CancellationMode) async throws -> Bool? {
         try await withWindow(windowId, cm) { window, job in
             window.get(Ax.minimizedAttr)
         }
     }
 
-    @MainActor static func refreshAllAndGetAliveWindowIds(frontmostAppBundleId: String?) async throws -> [MacApp: MacAppRefreshResult] {
+    @MainActor func getWindowLevel(_ windowId: OpaqueWindowId, _ cm: CancellationMode) async throws -> MacOsWindowLevel? {
+        guard let nativeWindowId = windowIdMapping.forward[windowId] else { return nil }
+        return try await AppBundle::getWindowLevel(forNativeId: nativeWindowId, cm)
+    }
+
+    @MainActor static func refreshAllAndGetAliveWindowIds(
+        frontmostAppBundleId: String?,
+    ) async throws -> [MacApp: MacAppRefreshResult] {
         for app in MacApp.allAppsMap.values { // gc dead apps
             try checkCancellation()
             if app.nsApp.isTerminated {
@@ -399,105 +388,118 @@ final class MacApp: AbstractApp {
                 }
             }
             var result: [MacApp: MacAppRefreshResult] = [:]
-            for try await (macAppRef, refreshResult) in group {
-                result[macAppRef.value] = refreshResult
+            for try await (macAppRef, windowIds) in group {
+                result[macAppRef.value] = windowIds
             }
             return result
         }
     }
 
-    private func refreshAndGetAliveWindowIds(frontmostAppBundleId: String?) async throws -> MacAppRefreshResult {
+    @MainActor private func refreshAndGetAliveWindowIds(frontmostAppBundleId: String?) async throws -> MacAppRefreshResult {
         if nsApp.isTerminated {
             await destroy()
             return .empty
         }
         guard let thread else { return .empty }
-        // Read on this actor before hopping to the dedicated AX thread, same as in getFocusedWindow.
-        let staleTabCandidateId = lastNativeFocusedWindowId
-        let (alive, replacement, incomplete) = try await thread.runInLoop(.cancellable) { [pid, windows, retiredNativeTabWindowIds, axApp, staleTabCandidateId] (job) -> ([UInt32], NativeTabWindowReplacement?, Bool) in
-            var alive: [UInt32: AxWindow] = windows.threadGuarded
-            // A timed-out enumeration doesn't mean the app has no windows. Keep the known set and
-            // report the refresh as incomplete so the caller retries (upstream PR #2326)
-            let (axWindows, axWindowsError) = axApp.threadGuarded.getOrError(Ax.windowsAttr)
-            let liveWindows = axWindows ?? []
-            var isAppUnresponsive = axWindowsError == .cannotComplete
-            let liveWindowIds = Set(liveWindows.map(\.windowId))
-            let focusedWindowId = axApp.threadGuarded.get(Ax.focusedWindowAttr)?.windowId
-            var retiredIds = retiredNativeTabWindowIds.threadGuarded
-            if let focusedWindowId {
-                retiredIds.remove(focusedWindowId)
-            }
-            var replacement: NativeTabWindowReplacement?
-            // Same native-tab-replacement candidate as getFocusedWindow, caught here too so this
-            // periodic refresh (which can run before the focus-change notification that normally
-            // retires it) doesn't flicker the layout by reporting the stale tab as alive.
-            // liveWindowIds.contains(focusedWindowId): don't retire the old slot until the new
-            // window has actually landed in AXWindows this cycle, else it'd be GC'd with nothing
-            // to take its place (AXFocusedWindow can report it a cycle early).
-            if let focusedWindowId, liveWindowIds.contains(focusedWindowId),
-               let staleTabCandidateId = nativeTabReplacementCandidate(
-                   previousFocusedWindowId: staleTabCandidateId,
-                   focusedWindowId: focusedWindowId,
-                   liveWindowIds: liveWindowIds,
-                   trackedWindowIds: Set(alive.keys),
-                   isMouseButtonDown: isLeftMouseButtonDown,
-               ),
-               alive.removeValue(forKey: staleTabCandidateId) != nil
-            {
-                retiredIds.insert(staleTabCandidateId)
-                replacement = NativeTabWindowReplacement(
-                    focusedWindowId: focusedWindowId,
-                    staleWindowId: staleTabCandidateId,
-                )
-            }
-            // Second line of defence against lock screen. See the first line of defence: closedWindowsCache
-            // Second and third lines of defence are technically needed only to avoid potential flickering
-            var windowServerWindowIds: Set<UInt32>?
-            if frontmostAppBundleId != lockScreenAppBundleId {
-                alive = try alive.filter { entry in
-                    try job.checkCancellation()
-                    return isTrackedWindowAlive(
-                        isRetiredNativeTab: retiredIds.contains(entry.key),
-                        isAppUnresponsive: &isAppUnresponsive,
-                        containingWindowIdError: { entry.value.ax.containingWindowIdError() },
-                        windowStillExists: {
-                            if windowServerWindowIds == nil {
-                                windowServerWindowIds = getWindowServerWindowIds(ownerPid: pid)
-                            }
-                            return windowServerWindowIds?.contains(entry.key) == true
-                        },
+        let previousStatuses = lifeStatusesOfLastRefresh
+        let snapshot = try await thread
+            .runInLoop(.cancellable) { [pid, windows, axApp, bgTabsScheduledForPrune] job -> ([UInt32: WindowLifeStatus], Bool) in
+                var tracked = windows.threadGuarded.filter { !bgTabsScheduledForPrune.contains($0.key) }
+                let (axWindows, error) = axApp.threadGuarded.getOrError(Ax.windowsAttr)
+                var unresponsive = error == .cannotComplete
+                var windowServerWindowIds: Set<UInt32>?
+                if frontmostAppBundleId != lockScreenAppBundleId {
+                    tracked = try tracked.filter { entry in
+                        try job.checkCancellation()
+                        return isTrackedWindowAlive(
+                            isAppUnresponsive: &unresponsive,
+                            containingWindowIdError: { entry.value.ax.containingNativeWindowIdError() },
+                            windowStillExists: {
+                                if windowServerWindowIds == nil {
+                                    windowServerWindowIds = getWindowServerWindowIds(ownerPid: pid)
+                                }
+                                return windowServerWindowIds?.contains(entry.key) == true
+                            },
+                        )
+                    }
+                }
+                let liveWindowIds = Set((axWindows ?? []).map(\.windowId))
+                if !unresponsive {
+                    for (id, window) in axWindows ?? [] {
+                        try job.checkCancellation()
+                        try tracked.getOrRegisterAxWindow(windowId: id, window, pid, job)
+                    }
+                }
+                windows.threadGuarded = tracked
+                let statuses = tracked.keys.associate { id in
+                    retainedWindowLifeStatus(
+                        previously: previousStatuses[id],
+                        isEnumerated: liveWindowIds.contains(id),
+                        incomplete: unresponsive,
                     )
                 }
+                return (statuses, unresponsive)
             }
+        var aliveOrInvisible = snapshot.0
+        let incomplete = snapshot.1
+        bgTabsScheduledForPrune = []
+        windowsCount = aliveOrInvisible.count
 
-            // Once the app timed out, don't send it more AX requests in this refresh: each of them
-            // would wait for the full timeout again.
-            for (id, window) in isAppUnresponsive ? [] : liveWindows where !retiredIds.contains(id) {
-                try job.checkCancellation()
-                try alive.getOrRegisterAxWindow(windowId: id, window, pid, job)
-            }
+        // An incomplete snapshot cannot prove a transition. Keep the last complete observation
+        // so a successful retry can still recognise a native tab change.
+        if !incomplete {
+            nonidempotentNativeTabSwapHeuristic(&aliveOrInvisible)
+        }
+        var result: [OpaqueWindowId: WindowLifeStatus] = [:]
+        for (id, lifeStatus) in aliveOrInvisible {
+            result[getOrRegisterOpaqueWindowId(id)] = lifeStatus
+        }
+        for windowId in setFrameJobs.keys where !result.keys.contains(windowId) {
+            setFrameJobs.removeValue(forKey: windowId)?.cancel()
+        }
+        let awaitingFocusedWindow = focusedWindowAwaitingEnumeration.map { aliveOrInvisible[$0] != .alive } == true
+        return MacAppRefreshResult(windows: result, incomplete: incomplete || awaitingFocusedWindow)
+    }
 
-            windows.threadGuarded = alive
-            retiredNativeTabWindowIds.threadGuarded = retiredIds
-            return (Array(alive.keys), replacement, isAppUnresponsive)
-        }
-        windowsCount = alive.count
-        if let replacement {
-            // Keep it current for backgrounded apps too, else a second native-tab switch while
-            // still backgrounded would compare against the stale pre-switch id.
-            lastNativeFocusedWindowId = replacement.focusedWindowId
-        }
-        let aliveSet = alive.toSet()
-        for windowId in setFrameJobs.keys {
-            if !aliveSet.contains(windowId) {
-                setFrameJobs.removeValue(forKey: windowId)?.cancel()
+    private var bgTabsScheduledForPrune: Set<UInt32> = []
+    private var lifeStatusesOfLastRefresh: [UInt32: WindowLifeStatus] = [:]
+    @MainActor private func nonidempotentNativeTabSwapHeuristic(_ statuses: inout [UInt32: WindowLifeStatus]) {
+        let candidate = nativeTabRemapCandidate(previous: lifeStatusesOfLastRefresh, current: statuses, isMouseButtonDown: isLeftMouseButtonDown)
+        // Keep transitions pending while dragging; a detached tab must get a separate identity.
+        if isLeftMouseButtonDown { return }
+        lifeStatusesOfLastRefresh = statuses
+        guard let candidate else { return }
+        let logicalId = getOrRegisterOpaqueWindowId(candidate.background)
+        let oldWindow = MacWindow.allWindowsMap[logicalId]
+        // A known destination is an independent managed window (Cmd-W can focus one on another
+        // workspace), not a new tab. Never merge those windows or suppress their close event.
+        if let destination = windowIdMapping.backward[candidate.frontmost],
+           MacWindow.allWindowsMap[destination] != nil { return }
+        guard canRemapNativeTabWindow(source: oldWindow, destination: nil) else { return }
+        setFrameJobs.removeValue(forKey: logicalId)?.cancel()
+        guard remapNativeTabWindow(
+            background: candidate.background,
+            frontmost: candidate.frontmost,
+            mapping: &windowIdMapping,
+            window: oldWindow,
+        ) != nil else { return }
+        statuses[candidate.background] = nil
+        bgTabsScheduledForPrune.insert(candidate.background)
+    }
+
+    @MainActor func reconcileKnownWindows(_ result: MacAppRefreshResult) {
+        for window in MacWindow.allWindows where window.macApp === self {
+            if let status = result.windows[window.windowId] {
+                window.lifeStatus = status
+            } else {
+                // Capture focus/hold before marking it dead: resolved focus skips tombstones.
+                window.garbageCollect(skipClosedWindowsCache: false)
             }
         }
-        return MacAppRefreshResult(
-            aliveWindowIds: alive,
-            nativeTabReplacement: replacement,
-            incomplete: incomplete,
-        )
+        let focus = globalFocus
+        if let focused = focus.windowOrNil, focused.lifeStatus != .alive {
+            _ = setFocus(to: focus.workspace.toLiveFocus())
+        }
     }
 
     private func destroy() async {
@@ -511,19 +513,21 @@ final class MacApp: AbstractApp {
     }
 
     private func withWindow<T>(
-        _ windowId: UInt32,
+        _ windowId: OpaqueWindowId,
         _ cm: CancellationMode,
         _ body: @Sendable @escaping (AXUIElement, RunLoopJob) throws -> T?,
     ) async throws -> T? {
-        try await thread?.runInLoop(cm) { [windows] job in
-            guard let window = windows.threadGuarded[windowId] else { return nil }
+        guard let nativeWindowId = windowIdMapping.forward[windowId] else { return nil }
+        return try await thread?.runInLoop(cm) { [windows] job in
+            guard let window = windows.threadGuarded[nativeWindowId] else { return nil }
             return try body(window.ax, job)
         }
     }
 
-    private func withWindowAsync(_ windowId: UInt32, _ cm: CancellationMode, _ body: @Sendable @escaping (AXUIElement, RunLoopJob) throws -> ()) -> RunLoopJob {
-        thread?.runInLoopAsync(job: RunLoopJob(cm)) { [windows] job in
-            guard let window = windows.threadGuarded[windowId] else { return }
+    private func withWindowAsync(_ windowId: OpaqueWindowId, _ cm: CancellationMode, _ body: @Sendable @escaping (AXUIElement, RunLoopJob) throws -> ()) -> RunLoopJob {
+        guard let nativeWindowId = windowIdMapping.forward[windowId] else { return .cancelled }
+        return thread?.runInLoopAsync(job: RunLoopJob(cm)) { [windows] job in
+            guard let window = windows.threadGuarded[nativeWindowId] else { return }
             try? body(window.ax, job)
         } ?? .cancelled
     }
@@ -589,8 +593,12 @@ private final class AxWindow {
 }
 
 extension [UInt32: AxWindow] {
-    @discardableResult
-    fileprivate mutating func getOrRegisterAxWindow(windowId id: UInt32, _ axWindow: AXUIElement, _ pid: pid_t, _ job: RunLoopJob) throws -> AxWindow? {
+    @discardableResult fileprivate mutating func getOrRegisterAxWindow(
+        windowId id: UInt32,
+        _ axWindow: AXUIElement,
+        _ pid: pid_t,
+        _ job: RunLoopJob,
+    ) throws -> AxWindow? {
         if let existing = self[id] { return existing }
         // Delay new window detection if mouse is down
         // It helps with apps that allow dragging their tabs out to create new windows
@@ -606,26 +614,56 @@ extension [UInt32: AxWindow] {
     }
 }
 
-func nativeTabReplacementCandidate(
-    previousFocusedWindowId: UInt32?,
-    focusedWindowId: UInt32,
-    liveWindowIds: Set<UInt32>,
-    trackedWindowIds: Set<UInt32>,
+/// A tab swap replaces one still-existing, now-invisible native window with one newly visible
+/// native window. A genuine destroyed window is absent and must follow closure handling instead.
+func nativeTabRemapCandidate(
+    previous: [UInt32: WindowLifeStatus],
+    current: [UInt32: WindowLifeStatus],
     isMouseButtonDown: Bool,
-) -> UInt32? {
-    guard !isMouseButtonDown,
-          let previousFocusedWindowId,
-          previousFocusedWindowId != focusedWindowId,
-          trackedWindowIds.contains(previousFocusedWindowId),
-          !liveWindowIds.contains(previousFocusedWindowId)
-    else { return nil }
-    return previousFocusedWindowId
+) -> (background: UInt32, frontmost: UInt32)? {
+    guard !isMouseButtonDown else { return nil }
+    let disappeared = previous.filter { $0.value == .alive && current[$0.key] != .alive }
+    let appeared = current.filter { $0.value == .alive && previous[$0.key] != .alive }
+    guard let old = disappeared.singleOrNil()?.key, current[old] == .invisible,
+          let new = appeared.singleOrNil()?.key else { return nil }
+    return (old, new)
+}
+
+@MainActor
+func canRemapNativeTabWindow(source: Window?, destination: Window?) -> Bool {
+    guard destination == nil else { return false }
+    guard let source else { return true }
+    return source.isBound && (source.parent is TilingContainer || source.parent is FloatingWindowsContainer)
+}
+
+func shouldRegisterFocusedWindow(lifeStatus: WindowLifeStatus?, incomplete: Bool) -> Bool {
+    !incomplete && lifeStatus == .alive
+}
+
+/// Change only the macOS backing window; the logical node, its tree slot and user sizing survive.
+@MainActor
+@discardableResult
+func remapNativeTabWindow(
+    background: UInt32,
+    frontmost: UInt32,
+    mapping: inout BiDictionary<OpaqueWindowId, UInt32>,
+    window: Window?,
+) -> OpaqueWindowId? {
+    guard let logicalId = mapping.backward[background],
+          window == nil || window?.isBound == true && window?.windowId == logicalId else { return nil }
+    mapping.put(logicalId, frontmost)
+    window?.invalidateNativeWindowGeometry()
+    return logicalId
+}
+
+func retainedWindowLifeStatus(previously: WindowLifeStatus?, isEnumerated: Bool, incomplete: Bool) -> WindowLifeStatus {
+    if isEnumerated { return .alive }
+    return incomplete ? previously ?? .invisible : .invisible
 }
 
 /// Decides whether a tracked window is still alive during a refresh.
 ///
-/// A retired native tab is dead regardless of what AX says: its successor has taken its place in the
-/// tree (see ``nativeTabReplacementCandidate``). Otherwise, `_AXUIElementGetWindow` failing used to mean
+/// `_AXUIElementGetWindow` failing used to mean
 /// "closed", but an app that hangs or is too busy to respond fails it with `.cannotComplete` once the AX
 /// messaging timeout expires, and its windows were garbage collected
 /// (https://github.com/nikitabobko/AeroSpace/issues/1216, upstream PR #2317). On `.cannotComplete`, ask
@@ -633,12 +671,10 @@ func nativeTabReplacementCandidate(
 /// rest of the refresh. The caller supplies a lazily captured, per-app WindowServer snapshot so off-screen
 /// windows remain alive without making one WindowServer request per tracked window.
 func isTrackedWindowAlive(
-    isRetiredNativeTab: Bool,
     isAppUnresponsive: inout Bool,
     containingWindowIdError: () -> AXError,
     windowStillExists: () -> Bool,
 ) -> Bool {
-    if isRetiredNativeTab { return false }
     if isAppUnresponsive { return windowStillExists() }
     switch containingWindowIdError() {
         case .success: return true
@@ -656,12 +692,6 @@ private func getWindowServerWindowIds(ownerPid: pid_t) -> Set<UInt32> {
         guard (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == ownerPid else { return nil }
         return (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value
     })
-}
-
-// The old id is already retired by this point, so a cancelled splice would strand it: it can't
-// be re-proposed, and its tree slot gets GC'd with nothing having replaced it.
-func nativeTabReplacementCancellationMode(replacingNativeTabWindowId: UInt32?) -> CancellationMode {
-    replacingNativeTabWindowId != nil ? .nonCancellable : .cancellable
 }
 
 private func getAxRect(window: AXUIElement, job: RunLoopJob) throws -> Rect? {

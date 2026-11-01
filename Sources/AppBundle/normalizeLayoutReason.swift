@@ -85,6 +85,51 @@ private struct FlattenedParentRestorePoint {
     }
 }
 
+/// Upstream keeps the root node and absorbs its sole container child's children during
+/// normalization. Keep enough of that child to rebuild the former nested layout on fullscreen exit.
+private struct AbsorbedRootChildRestorePoint {
+    let child: TilingContainer
+    let children: [TreeNode]
+    let weights: [CGFloat]
+    let mruChildren: [TreeNode]
+    let rootLayout: Layout
+    let rootOrientation: Orientation
+    let absorbedLayout: Layout
+    let absorbedOrientation: Orientation
+
+    @MainActor
+    init?(parent: NonLeafTreeNodeObject) {
+        guard let root = parent as? TilingContainer, root.isRootContainer,
+              let child = root.children.singleOrNil() as? TilingContainer else { return nil }
+        self.child = child
+        self.children = child.children
+        self.weights = child.children.map { $0.getWeight(child.orientation) }
+        self.mruChildren = Array(child._mruChildren)
+        self.rootLayout = root.layout
+        self.rootOrientation = root.orientation
+        self.absorbedLayout = child.layout
+        self.absorbedOrientation = child.orientation
+    }
+
+    @MainActor
+    func restore(parent: NonLeafTreeNodeObject, weight: CGFloat) -> Bool {
+        guard let root = parent as? TilingContainer, root.isRootContainer,
+              !child.isBound, child.children.isEmpty,
+              root.layout == absorbedLayout, root.orientation == absorbedOrientation,
+              root.children.count == children.count,
+              zip(root.children, children).allSatisfy({ $0 === $1 }) else { return false }
+        root.changeOrientation(rootOrientation)
+        root.layout = rootLayout
+        child.lifeStatus = .alive
+        child.bind(to: root, adaptiveWeight: weight, index: 0)
+        for (index, item) in children.enumerated() {
+            item.bind(to: child, adaptiveWeight: weights[index], index: index)
+        }
+        for item in mruChildren.reversed() { item.markAsMostRecentChild() }
+        return true
+    }
+}
+
 private struct MacosNativeFullscreenRestorePoint {
     let binding: BindingData
     let siblings: [TreeNode]
@@ -93,6 +138,7 @@ private struct MacosNativeFullscreenRestorePoint {
     let siblingWeights: [CGFloat]?
     let siblingAdaptiveWeights: [CGFloat]
     let flattenedParent: FlattenedParentRestorePoint?
+    let absorbedRootChild: AbsorbedRootChildRestorePoint?
 
     @MainActor
     init(binding: BindingData) {
@@ -111,6 +157,7 @@ private struct MacosNativeFullscreenRestorePoint {
             self.siblingWeights = nil
         }
         self.flattenedParent = FlattenedParentRestorePoint(parent: binding.parent)
+        self.absorbedRootChild = AbsorbedRootChildRestorePoint(parent: binding.parent)
     }
 
     @MainActor
@@ -124,6 +171,11 @@ private struct MacosNativeFullscreenRestorePoint {
                 remainingChildWeights: siblingAdaptiveWeights,
                 workspace: workspace,
             ) == true else { return false }
+        }
+        if parent.isBound, parent.children != siblings,
+           let childWeight = siblingAdaptiveWeights.singleOrNil()
+        {
+            _ = absorbedRootChild?.restore(parent: parent, weight: childWeight)
         }
         guard parent.isBound,
               parent.nodeWorkspace === workspace,
@@ -162,7 +214,7 @@ func normalizeLayoutReason() async throws {
 @MainActor private func validateStillPopups() async throws {
     for node in macosPopupWindowsContainer.children {
         let popup = (node as! MacWindow)
-        let windowLevel = try await getWindowLevel(for: popup.windowId, .cancellable)
+        let windowLevel = try await popup.getWindowLevel(.cancellable)
         if try await popup.isWindowHeuristic(windowLevel, .cancellable) {
             try await popup.relayoutWindow(on: globalFocus.workspace, .cancellable)
             await runOnWindowDetected(ifConventional: popup)
@@ -171,7 +223,7 @@ func normalizeLayoutReason() async throws {
 }
 
 @MainActor private func _normalizeLayoutReason(workspace: Workspace, windows: [Window]) async throws {
-    for window in windows {
+    for window in windows where window.lifeStatus == .alive {
         let isMacosFullscreen = try await window.isMacosFullscreen(.cancellable)
         let isMacosMinimized = try await (!isMacosFullscreen).andAsync { @MainActor @Sendable in try await window.isMacosMinimized(.cancellable) }
         let isMacosWindowOfHiddenApp = !isMacosFullscreen && !isMacosMinimized &&

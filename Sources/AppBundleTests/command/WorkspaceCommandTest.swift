@@ -19,11 +19,11 @@ final class WorkspaceCommandTest: XCTestCase {
         assertEquals(parseCommand("workspace --auto-back-and-forth next").errorOrNil, "--auto-back-and-forth is incompatible with (next|prev)")
         testParseSingleCommandSucc("workspace next --wrap-around", WorkspaceCmdArgs(target: .relative(.next), wrapAround: true))
         assertEquals(parseCommand("workspace --stdin foo").errorOrNil, "--stdin and --no-stdin require using (next|prev) argument")
-        testParseSingleCommandSucc("workspace --stdin next", WorkspaceCmdArgs(target: .relative(.next)).copy(\.commonState.explicitStdinFlag, true))
-        testParseSingleCommandSucc("workspace --no-stdin next", WorkspaceCmdArgs(target: .relative(.next)).copy(\.commonState.explicitStdinFlag, false))
+        testParseSingleCommandSucc("workspace --stdin next", WorkspaceCmdArgs(target: .relative(.next)).with(\.commonState.explicitStdinFlag, true))
+        testParseSingleCommandSucc("workspace --no-stdin next", WorkspaceCmdArgs(target: .relative(.next)).with(\.commonState.explicitStdinFlag, false))
     }
 
-    func testParseDashDash() {
+    func testParseDoubleDash() {
         testParseSingleCommandSucc("workspace -- foo", WorkspaceCmdArgs(target: .direct(.parse("foo").getOrDie())))
         assertEquals(parseCommand("workspace -- next").errorOrNil, "ERROR: 'next' is a reserved workspace name")
         assertEquals(parseCommand("workspace --").errorOrNil, "ERROR: Argument \'(<workspace-name>|next|prev)\' is mandatory")

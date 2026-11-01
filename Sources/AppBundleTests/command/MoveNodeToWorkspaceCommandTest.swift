@@ -10,17 +10,17 @@ final class MoveNodeToWorkspaceCommandTest: XCTestCase {
         testParseSingleCommandSucc("move-node-to-workspace next", MoveNodeToWorkspaceCmdArgs(target: .relative(.next)))
         assertEquals(parseCommand("move-node-to-workspace --fail-if-noop next").errorOrNil, "--fail-if-noop is incompatible with (next|prev)")
         assertEquals(parseCommand("move-node-to-workspace --stdin foo").errorOrNil, "--stdin and --no-stdin require using (next|prev) argument")
-        testParseSingleCommandSucc("move-node-to-workspace --stdin next", MoveNodeToWorkspaceCmdArgs(target: .relative(.next)).copy(\.commonState.explicitStdinFlag, true))
-        testParseSingleCommandSucc("move-node-to-workspace --no-stdin next", MoveNodeToWorkspaceCmdArgs(target: .relative(.next)).copy(\.commonState.explicitStdinFlag, false))
+        testParseSingleCommandSucc("move-node-to-workspace --stdin next", MoveNodeToWorkspaceCmdArgs(target: .relative(.next)).with(\.commonState.explicitStdinFlag, true))
+        testParseSingleCommandSucc("move-node-to-workspace --no-stdin next", MoveNodeToWorkspaceCmdArgs(target: .relative(.next)).with(\.commonState.explicitStdinFlag, false))
     }
 
-    func testParseDashDash() {
+    func testParseDoubleDash() {
         testParseSingleCommandSucc("move-node-to-workspace -- foo", MoveNodeToWorkspaceCmdArgs(workspace: "foo"))
         assertEquals(parseCommand("move-node-to-workspace -- prev").errorOrNil, "ERROR: 'prev' is a reserved workspace name")
         assertEquals(parseCommand("move-node-to-workspace --").errorOrNil, "ERROR: Argument \'(<workspace-name>|next|prev)\' is mandatory")
         testParseSingleCommandSucc(
             "move-node-to-workspace --focus-follows-window -- foo",
-            MoveNodeToWorkspaceCmdArgs(workspace: "foo").copy(\.focusFollowsWindow, true),
+            MoveNodeToWorkspaceCmdArgs(workspace: "foo").with(\.focusFollowsWindow, true),
         )
     }
 

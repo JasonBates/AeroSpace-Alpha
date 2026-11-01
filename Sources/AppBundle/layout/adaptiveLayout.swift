@@ -1,4 +1,5 @@
 import AppKit
+import Common
 
 struct TilingFootprint: Equatable {
     let columns: Int
@@ -10,8 +11,9 @@ extension TreeNode {
     var tilingFootprint: TilingFootprint? {
         switch nodeCases {
             case .window(let window):
-                return window.isAwaitingOnWindowDetected ? nil : TilingFootprint(columns: 1, rows: 1)
+                return window.isAwaitingOnWindowDetected || window.lifeStatus != .alive ? nil : TilingFootprint(columns: 1, rows: 1)
             case .tilingContainer(let container):
+                guard container.lifeStatus.isInhabited else { return nil }
                 let childFootprints = container.children.compactMap(\.tilingFootprint)
                 guard !childFootprints.isEmpty else { return nil }
                 if container.layout == .accordion {

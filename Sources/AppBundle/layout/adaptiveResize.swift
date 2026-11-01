@@ -176,7 +176,7 @@ func adaptiveMinimumPhysicalWidth(
         case .tiles:
             return childMinimums.max() ?? 1
         case .accordion:
-            return children.indices.map { index in
+            return children.indices.lazy.map { index in
                 let padding = adaptiveAccordionHorizontalPadding(container, children: children, index: index)
                 return childMinimums[index] + padding.left + padding.right
             }.max() ?? 1
@@ -240,7 +240,7 @@ private func adaptiveRequiredPhysicalWidth(
             else {
                 return max(1, requirements.reduce(0, +) + horizontalGap * CGFloat(children.count - 1))
             }
-            return children.indices.map { index in
+            return children.indices.lazy.map { index in
                 let share = weights[index] / totalWeight
                 let rawMinimum = max(
                     adaptiveGeometryEpsilon,
@@ -255,7 +255,7 @@ private func adaptiveRequiredPhysicalWidth(
         case .tiles:
             return requirements.max() ?? 1
         case .accordion:
-            return children.indices.map { index in
+            return children.indices.lazy.map { index in
                 let padding = adaptiveAccordionHorizontalPadding(container, children: children, index: index)
                 return requirements[index] + padding.left + padding.right
             }.max() ?? 1

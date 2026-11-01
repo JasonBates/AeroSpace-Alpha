@@ -28,7 +28,7 @@ extension Workspace {
                     width: expandedWidth,
                     height: layoutRect.height,
                 )
-                let participatingWindows = rootTilingContainer.allLeafWindowsRecursive.filter { !$0.isAwaitingOnWindowDetected }
+                let participatingWindows = rootTilingContainer.allInhabitedLeafWindowsRecursive.filter { !$0.isAwaitingOnWindowDetected }
                 if footprint.columns == 1, let loneWindow = participatingWindows.singleOrNil() {
                     let width = loneWindow.singleWindowWidth(base: layoutRect.width, available: rect.width)
                     layoutRect = Rect(
@@ -47,7 +47,7 @@ extension Workspace {
                   )
         {
             let loneWindow = rootTilingContainer.hasSingleLeafWindowRecursive
-                ? rootTilingContainer.anyLeafWindowRecursive : nil
+                ? rootTilingContainer.allInhabitedLeafWindowsRecursive.first : nil
             let targetWidth = loneWindow?.singleWindowWidth(base: constrainedWidth, available: rect.width)
                 ?? min(constrainedWidth, rect.width)
             if targetWidth < rect.width {
@@ -106,14 +106,14 @@ extension TreeNode {
                 try await workspace.floatingWindowsContainer.layoutRecursive(point, width: width, height: height, virtual: virtual, context)
             case .floatingWindowsContainer(let container):
                 for window in container.children.filterIsInstance(of: Window.self) {
-                    if window.isAwaitingOnWindowDetected { continue }
+                    if window.isAwaitingOnWindowDetected || window.lifeStatus != .alive { continue }
                     window.lastAppliedLayoutPhysicalRect = nil
                     window.lastAppliedLayoutVirtualRect = nil
                     if window.windowId == currentlyManipulatedWithMouseWindowId { continue } // Follows the pointer
                     try await window.layoutFloatingWindow(context) // todo make it parallel. Get rid of 'try await'
                 }
             case .window(let window):
-                if window.isAwaitingOnWindowDetected { break }
+                if window.isAwaitingOnWindowDetected || window.lifeStatus != .alive { break }
                 if window.windowId != currentlyManipulatedWithMouseWindowId {
                     lastAppliedLayoutVirtualRect = virtual
                     if let focusFrame = FocusMode.shared.frame(for: window, in: context.workspace) {
@@ -121,7 +121,7 @@ extension TreeNode {
                         // written again when Focus Mode ends (the redundant-write skip below compares rects)
                         lastAppliedLayoutPhysicalRect = focusFrame
                         window.setAxFrame(focusFrame.topLeftCorner, focusFrame.size)
-                    } else if window.isFullscreen && window == context.workspace.rootTilingContainer.mostRecentWindowRecursive {
+                    } else if window.isFullscreen && window == context.workspace.rootTilingContainer.mostRecentNonEmptyWindowRecursive {
                         lastAppliedLayoutPhysicalRect = nil
                         window.layoutFullscreen(context)
                     } else {
@@ -257,11 +257,13 @@ extension TilingContainer {
             )
         }
 
-        guard let delta = ((orientation == .h ? width : height) - CGFloat(children.sumOfDouble { $0.getWeight(orientation) }))
-            .div(children.count) else { return }
+        let inhabitedChildren = children
 
-        let lastIndex = children.indices.last
-        for (i, child) in children.enumerated() {
+        guard let delta = ((orientation == .h ? width : height) - CGFloat(inhabitedChildren.sumOfDouble { $0.getWeight(orientation) }))
+            .div(inhabitedChildren.count) else { return }
+
+        let lastIndex = inhabitedChildren.indices.last
+        for (i, child) in inhabitedChildren.enumerated() {
             child.setWeight(orientation, child.getWeight(orientation) + delta)
             // Gaps. Consider 4 cases:
             // 1. Multiple children. Layout first child
@@ -291,7 +293,7 @@ extension TilingContainer {
 
     @MainActor
     fileprivate func layoutAccordion(_ point: CGPoint, width: CGFloat, height: CGFloat, virtual: Rect, _ context: LayoutContext) async throws {
-        guard let mostRecentChild else { return }
+        guard let mostRecentChild = mostRecentInhabitedChild else { return }
         let children = layoutChildren(adaptiveLayoutEnabled: context.adaptiveLayoutEnabled)
         adaptiveLayoutProportionCache = AdaptiveLayoutProportionCache(
             orientation: orientation,

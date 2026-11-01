@@ -1,5 +1,6 @@
 @testable import AppBundle
 import AppKit
+import Common
 import XCTest
 
 @MainActor
@@ -7,6 +8,48 @@ final class AdaptiveLayoutTest: XCTestCase {
     override func setUp() async throws {
         setUpWorkspacesForTests()
         config.adaptiveLayout.enabled = .constant(true)
+    }
+
+    func testInvisibleWindowsDoNotConsumeFootprintMinimaWeightsOrFocus() async throws {
+        let workspace = globalFocus.workspace
+        let root = workspace.rootTilingContainer
+        let visible = TestWindow.new(id: 1, parent: root)
+        let invisible = TestWindow.new(id: 2, parent: root, adaptiveWeight: 8000)
+        invisible.observedMinimumSize = ObservedMinimumSize(width: 10000, height: 10000)
+        invisible.lifeStatus = .invisible
+        let emptyContainer = TilingContainer.newVTiles(parent: root, adaptiveWeight: 9000, index: INDEX_BIND_LAST)
+        TestWindow.new(id: 3, parent: emptyContainer).lifeStatus = .invisible
+        emptyContainer.lifeStatus = .deadOrInvisible
+
+        try await workspace.layoutWorkspace()
+        assertEquals(root.tilingFootprint, TilingFootprint(columns: 1, rows: 1))
+        assertRect(try await visible.getAxRect(.nonCancellable), x: 643.2, y: 54, width: 633.6, height: 971)
+        assertEquals(invisible.hWeight, 8000)
+        assertEquals(emptyContainer.hWeight, 9000)
+        assertEquals(invisible.setAxFrameCallCountForTest, 0)
+        XCTAssertTrue(workspace.toLiveFocus().windowOrNil === visible)
+
+        let other = TestWindow.new(id: 4, parent: root, adaptiveWeight: WEIGHT_AUTO)
+        try await workspace.layoutWorkspace()
+        let resized = await parseCommand("resize --window-id 1 width +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        assertEquals(resized.exitCode.rawValue, 0)
+        try await workspace.layoutWorkspace()
+        assertEquals(invisible.hWeight, 8000)
+        assertEquals(emptyContainer.hWeight, 9000)
+        let otherRect = try await other.getAxRect(.nonCancellable)
+        XCTAssertGreaterThan(try XCTUnwrap(otherRect).width, 0)
+    }
+
+    func testNativeRemapReappliesUnchangedLayoutFrame() async throws {
+        let workspace = globalFocus.workspace
+        let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
+        try await workspace.layoutWorkspace()
+        let writes = window.setAxFrameCallCountForTest
+        try await workspace.layoutWorkspace()
+        assertEquals(window.setAxFrameCallCountForTest, writes)
+        window.invalidateNativeWindowGeometry()
+        try await workspace.layoutWorkspace()
+        assertEquals(window.setAxFrameCallCountForTest, writes + 1)
     }
 
     func testOneTwoAndThreeColumnFramesAndRepeatedLayout() async throws {
@@ -60,7 +103,7 @@ final class AdaptiveLayoutTest: XCTestCase {
         root.changeOrientation(.v)
 
         for row in 1 ... 8 {
-            TestWindow.new(id: UInt32(row), parent: root, adaptiveWeight: row == 1 ? 1 : WEIGHT_AUTO)
+            TestWindow.new(id: OpaqueWindowId(UInt64(row)), parent: root, adaptiveWeight: row == 1 ? 1 : WEIGHT_AUTO)
             try await workspace.layoutWorkspace()
             if row >= 2 {
                 assertEquals(root.tilingFootprint, TilingFootprint(columns: 1, rows: row))
@@ -125,8 +168,8 @@ final class AdaptiveLayoutTest: XCTestCase {
         var second: Window!
         for column in 0 ..< 2 {
             TilingContainer.newVTiles(parent: root, adaptiveWeight: column == 0 ? 1 : WEIGHT_AUTO).apply {
-                let top = TestWindow.new(id: UInt32(column * 2 + 1), parent: $0)
-                TestWindow.new(id: UInt32(column * 2 + 2), parent: $0, adaptiveWeight: WEIGHT_AUTO)
+                let top = TestWindow.new(id: OpaqueWindowId(UInt64(column * 2 + 1)), parent: $0)
+                TestWindow.new(id: OpaqueWindowId(UInt64(column * 2 + 2)), parent: $0, adaptiveWeight: WEIGHT_AUTO)
                 if column == 0 {
                     first = top
                 } else {
@@ -185,7 +228,7 @@ final class AdaptiveLayoutTest: XCTestCase {
         let root = workspace.rootTilingContainer
         root.layout = .accordion
         let first = TestWindow.new(id: 1, parent: root)
-        let windows = (2 ... 8).map { TestWindow.new(id: UInt32($0), parent: root) }
+        let windows = (2 ... 8).map { TestWindow.new(id: OpaqueWindowId(UInt64($0)), parent: root) }
 
         assertTrue(first.focusWindow())
         try await workspace.layoutWorkspace()
@@ -519,7 +562,7 @@ final class AdaptiveLayoutTest: XCTestCase {
             TilingContainer.newHTiles(parent: root, adaptiveWeight: row == 0 ? 1 : WEIGHT_AUTO).apply { container in
                 for column in 0 ..< 4 {
                     let window = TestWindow.new(
-                        id: UInt32(row * 4 + column + 1),
+                        id: OpaqueWindowId(UInt64(row * 4 + column + 1)),
                         parent: container,
                         adaptiveWeight: column == 0 ? 1 : WEIGHT_AUTO,
                     )
@@ -715,7 +758,7 @@ final class AdaptiveLayoutTest: XCTestCase {
         setMonitorInfosForTests([narrow])
         let workspace = globalFocus.workspace
         assertTrue(narrow.setVisibleWorkspace(workspace))
-        let windows = (1 ... 6).map { TestWindow.new(id: UInt32($0), parent: workspace.rootTilingContainer) }
+        let windows = (1 ... 6).map { TestWindow.new(id: OpaqueWindowId(UInt64($0)), parent: workspace.rootTilingContainer) }
 
         try await workspace.layoutWorkspace()
 
@@ -738,7 +781,7 @@ final class AdaptiveLayoutTest: XCTestCase {
             .accordion,
             index: INDEX_BIND_LAST,
         )
-        let accordionWindows = (1 ... 3).map { TestWindow.new(id: UInt32($0), parent: accordion) }
+        let accordionWindows = (1 ... 3).map { TestWindow.new(id: OpaqueWindowId(UInt64($0)), parent: accordion) }
         let sibling = TestWindow.new(id: 4, parent: root)
         try await workspace.layoutWorkspace()
         assertTrue(accordionWindows[1].focusWindow())
@@ -796,7 +839,7 @@ final class AdaptiveLayoutTest: XCTestCase {
                 let workspace = globalFocus.workspace
                 workspace.rootTilingContainer.changeOrientation(.v)
                 let windows = (1 ... count).map {
-                    TestWindow.new(id: UInt32($0), parent: workspace.rootTilingContainer)
+                    TestWindow.new(id: OpaqueWindowId(UInt64($0)), parent: workspace.rootTilingContainer)
                 }
 
                 try await workspace.layoutWorkspace()
@@ -847,7 +890,7 @@ final class AdaptiveLayoutTest: XCTestCase {
         config.gaps.inner.vertical = .constant(30)
         workspace.rootTilingContainer.changeOrientation(.v)
         let windows = (1 ... 4).map {
-            TestWindow.new(id: UInt32($0), parent: workspace.rootTilingContainer)
+            TestWindow.new(id: OpaqueWindowId(UInt64($0)), parent: workspace.rootTilingContainer)
         }
 
         try await workspace.layoutWorkspace()
@@ -1473,8 +1516,8 @@ final class AdaptiveLayoutTest: XCTestCase {
         var windows: [Window] = []
         for column in 0 ..< 2 {
             TilingContainer.newVTiles(parent: root, adaptiveWeight: column == 0 ? 1 : WEIGHT_AUTO).apply {
-                windows.append(TestWindow.new(id: UInt32(column * 2 + 1), parent: $0))
-                windows.append(TestWindow.new(id: UInt32(column * 2 + 2), parent: $0, adaptiveWeight: WEIGHT_AUTO))
+                windows.append(TestWindow.new(id: OpaqueWindowId(UInt64(column * 2 + 1)), parent: $0))
+                windows.append(TestWindow.new(id: OpaqueWindowId(UInt64(column * 2 + 2)), parent: $0, adaptiveWeight: WEIGHT_AUTO))
             }
         }
         try await workspace.layoutWorkspace()

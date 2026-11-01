@@ -414,18 +414,13 @@ focused workspace no longer matches, and so does a click. A native
 fullscreen window starts no hold: switching away from its Space looks the
 same to AeroSpace as a close.
 
-The hold starts in both places a window can leave the tree, `garbageCollect`
-and `discardNativeTabWindow`, because #2225's `nativeTabReplacementCandidate`
-reads a closed window, gone from AXWindows while the app focuses another, as
-a native tab switched away from. Without the hold there, such a close skipped
-the close path and AeroSpace followed the browser. Tabs of one group share a
-workspace, so when the newly focused window is one AeroSpace already manages
-on another workspace, the old window now goes through `garbageCollect`
-(`isWindowCloseRatherThanTabSwitch`), which reports `window-closed` and
-returns focus to the workspace's previous window. A second window of the same
-app on the same workspace still reads as a tab switch: focus stays on the
-workspace but goes to the app's window. Telling those apart needs the tab
-group itself (`AXTabGroup`). All of it is unit-tested.
+The hold starts only when a managed logical window is genuinely garbage-collected.
+Changing a native tab keeps that logical window and its focus, so it starts no
+hold and emits no close/detect pair. A temporary move to an inactive native
+Space leaves an invisible placeholder in the tree and also starts no hold.
+A known destination window is never merged into another logical window: Cmd-W
+on a browser can key its independent window on another workspace, and the
+closed source still takes the ordinary close/event/focus-restoration path.
 
 With these, a rule can open a window floating, sized and centred:
 
@@ -434,6 +429,60 @@ With these, a rule can open a window floating, sized and centred:
     if.app-id = 'com.apple.QuickTimePlayerX'
     run = ['layout floating', 'resize smart 1600', 'center']
 ```
+
+## November 2026 window identity migration
+
+The migration through upstream `c960a8ac` adopts its `OpaqueWindowId`, window
+`lifeStatus` and tombstone containers. A logical window keeps its AeroSpace ID
+and tree node while native tabs exchange macOS WindowServer IDs. Invisible
+native Spaces and inactive tabs retain placeholders without consuming layout
+footprint, minimum sizes, donor weights, automatic focus or visible-window command results.
+An explicit `focus --window-id` still activates a hidden native tab or Space,
+as upstream permits.
+
+This retires Alpha's #2225 object-splicing replacement helpers, retired-tab ID
+set and non-cancellable replacement-geometry fetch. Native-tab regression tests
+now exercise identity remapping, nested and floating placement, drag deferral,
+closure, fullscreen Space changes, and focus/event preservation. Alpha narrows
+the upstream remap heuristic: the old native window must still exist but be
+invisible, the destination cannot already be an independently managed window,
+and incomplete AX snapshots cannot prove a swap. First detection waits until a
+focused native ID appears in a complete window enumeration, including when
+`AXFocusedWindow` arrives a cycle before `AXWindows`.
+
+The #2317 WindowServer liveness fallback and #2326 exponential retry remain.
+A timed-out enumeration retains each known window's last visibility instead
+of turning the whole app invisible; successful retries can still identify a
+tab transition. The #2316 resolved process ID is used for AX creation and
+subscriptions. The #2179 private focus fallback resolves the native ID at the
+SkyLight boundary, as does the focused-window border at the WindowServer
+boundary. Alpha's activation guard, close-workspace holds, event extensions,
+monitor recovery, adaptive sizing, minimum sizes, mouse resizing, Focus Mode
+and border styling remain.
+
+A tab remap keeps user sizing, fullscreen state and the virtual tree geometry,
+but forgets its physical-frame cache and learned app minimums. Pending minimum
+confirmations carry a geometry generation, so a reply for the previous native
+tab cannot seed the new tab's minimum. A returning invisible window also has
+its physical cache invalidated so an unchanged tile is written again.
+
+`list-windows --format '%{window-id} %{window-native-id} %{app-pid}'` exposes
+both identities for external integrations. `window-id` is the opaque logical
+ID used by AeroSpace commands; `window-native-id` is the current macOS ID,
+number or `null` in JSON and `null` in text when unavailable. Persisted
+snapshots must match native IDs and app PIDs when crossing this identity
+migration, then use the new logical IDs when issuing AeroSpace commands.
+
+The upstream queue workflow is omitted: Alpha retains its existing contribution
+policy and build/release workflows without upstream's queue-management policy.
+Swift 6.4.2 and the matching generated project settings are retained.
+
+Root-container normalization now adopts the sole child's orientation and layout
+and preserves its original child order, split weights and full recent-focus
+order while absorbing that container.
+Upstream's mutable removal indices reversed that order. Alpha's native-fullscreen
+restore point rebuilds the absorbed child under the preserved root, restoring
+the original nested layout and weights without replacing the root node.
 
 ## Building
 
@@ -464,8 +513,9 @@ back, delete them again and keep Alpha's own `pull_request_template.md`. The
 
 Other things to check after a merge:
 
-- Upstream's `.gitignore` ignores every file in the repository root by
-  default, so a new root script needs `git add -f`.
+- Upstream's `.gitignore` ignores root dotfiles and dotdirectories by default.
+  Add new root dotfiles with `git add -f` and list new dotdirectories in its
+  exceptions; ordinary root scripts no longer need force-adding.
 - Run `./generate.sh` when upstream edited `docs/aerospace-*.adoc`, or
   `./test.sh` fails on uncommitted generated files.
 - Multi-monitor tests call `setMonitorInfosForTests([...])`, which rebuilds the

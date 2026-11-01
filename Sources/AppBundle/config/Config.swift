@@ -32,7 +32,7 @@ var defaultConfigUrl: URL {
 @MainActor var config: Config = defaultConfig // todo move to Ctx?
 @MainActor var configUrl: URL = defaultConfigUrl
 
-struct Config: ConvenienceMutable {
+struct Config: Withable {
     var configVersion: ConfigVersion = ._1
     var _afterLoginCommand: [any Command] = []
     var afterStartupCommand: Shell<any Command> = .empty
@@ -83,7 +83,7 @@ extension Config {
     }
 }
 
-struct AdaptiveLayoutConfig: ConvenienceMutable, Equatable, Sendable {
+struct AdaptiveLayoutConfig: Withable, Equatable, Sendable {
     var enabled: DynamicConfigValue<Bool>
     var oneColumnWidthPercent: Int
     var twoColumnWidthPercent: Int
@@ -99,7 +99,7 @@ struct AdaptiveLayoutConfig: ConvenienceMutable, Equatable, Sendable {
     )
 }
 
-struct FocusFollowsMouse: ConvenienceMutable {
+struct FocusFollowsMouse: Withable {
     var enabled: Bool = false
 }
 

@@ -1,4 +1,5 @@
 import AppKit
+import Common
 
 /// A visual override only: the workspace tree and its tile weights stay intact.
 @MainActor
@@ -7,7 +8,7 @@ final class FocusMode {
     static let minimumHeight: CGFloat = 600
 
     private(set) var workspaceName: String?
-    private(set) var windowId: UInt32?
+    private(set) var windowId: OpaqueWindowId?
     private var stayOnMonitor = false
     private var originalFloatingFrame: Rect?
 
@@ -65,7 +66,7 @@ final class FocusMode {
     }
 
     func frame(for window: Window, in workspace: Workspace) -> Rect? {
-        guard workspaceName == workspace.name, windowId == window.windowId else { return nil }
+        guard window.lifeStatus == .alive, workspaceName == workspace.name, windowId == window.windowId else { return nil }
         let geometry = baseGeometry(for: workspace)
         let width = window.singleWindowWidth(base: geometry.frame.width, available: geometry.available.width)
         let fullHeight = geometry.available.height - 1

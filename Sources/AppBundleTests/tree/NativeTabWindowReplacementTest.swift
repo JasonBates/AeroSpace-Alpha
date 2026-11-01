@@ -1,126 +1,150 @@
 @testable import AppBundle
+import AppKit
+import Common
 import XCTest
 
 @MainActor
 final class NativeTabWindowReplacementTest: XCTestCase {
     override func setUp() async throws { setUpWorkspacesForTests() }
 
-    func testReplacementPreservesNestedTreeSlotAndWeight() throws {
+    func testReplacementPreservesNestedTreeSlotAndWeight() {
         let root = Workspace.get(byName: name).rootTilingContainer
         let container = TilingContainer.newHTiles(parent: root, adaptiveWeight: 1, index: INDEX_BIND_LAST)
         TestWindow.new(id: 1, parent: container)
-        let oldWindow = TestWindow.new(id: 2, parent: container, adaptiveWeight: 3)
+        let window = TestWindow.new(id: 2, parent: container, adaptiveWeight: 3)
         TestWindow.new(id: 3, parent: container)
+        var mapping = BiDictionary<OpaqueWindowId, UInt32>()
+        mapping.put(window.windowId, 100)
 
-        let replacement = takeNativeTabReplacementBinding(from: oldWindow)
-        let bindingData = try XCTUnwrap(replacement).bindingData
-        let newWindow = TestWindow.new(id: 4, parent: root)
-        newWindow.bind(
-            to: bindingData.parent,
-            adaptiveWeight: bindingData.adaptiveWeight,
-            index: bindingData.index,
-        )
-
-        assertEquals(container.layoutDescription, .h_tiles([.window(1), .window(4), .window(3)]))
-        assertEquals(newWindow.getWeight(.h), 3)
+        assertEquals(remapNativeTabWindow(background: 100, frontmost: 200, mapping: &mapping, window: window), 2)
+        assertEquals(container.layoutDescription, .h_tiles([.window(1), .window(2), .window(3)]))
+        assertEquals(window.getWeight(.h), 3)
+        assertEquals(mapping.forward[2], 200)
+        XCTAssertNil(mapping.backward[100])
+        assertEquals(mapping.backward[200], 2)
     }
 
-    func testNoReplacementWhenStaleWindowIsNil() {
-        let replacement = takeNativeTabReplacementBinding(from: nil)
-        XCTAssertNil(replacement)
+    func testNoReplacementWhenStaleWindowIsUnknown() {
+        var mapping = BiDictionary<OpaqueWindowId, UInt32>()
+        XCTAssertNil(remapNativeTabWindow(background: 100, frontmost: 200, mapping: &mapping, window: nil))
+        XCTAssertTrue(mapping.forward.isEmpty)
     }
 
     func testNoReplacementWhenStaleWindowIsAlreadyUnbound() {
-        let root = Workspace.get(byName: name).rootTilingContainer
-        let window = TestWindow.new(id: 1, parent: root)
+        let window = TestWindow.new(id: 1, parent: Workspace.get(byName: name).rootTilingContainer)
+        var mapping = BiDictionary<OpaqueWindowId, UInt32>()
+        mapping.put(1, 100)
         window.unbindFromParent()
-
-        let replacement = takeNativeTabReplacementBinding(from: window)
-
-        XCTAssertNil(replacement)
+        XCTAssertNil(remapNativeTabWindow(background: 100, frontmost: 200, mapping: &mapping, window: window))
+        assertEquals(mapping.forward[1], 100)
     }
 
-    func testReplacementUnbindsExactlyTheGivenWindow() {
+    func testReplacementChangesExactlyTheGivenLogicalWindow() {
         let root = Workspace.get(byName: name).rootTilingContainer
         let untouched = TestWindow.new(id: 1, parent: root)
-        let staleWindow = TestWindow.new(id: 2, parent: root)
-
-        let replacement = takeNativeTabReplacementBinding(from: staleWindow)
-
-        XCTAssertNotNil(replacement)
+        let window = TestWindow.new(id: 2, parent: root)
+        var mapping = BiDictionary<OpaqueWindowId, UInt32>()
+        mapping.put(1, 100)
+        mapping.put(2, 200)
+        remapNativeTabWindow(background: 200, frontmost: 300, mapping: &mapping, window: window)
         XCTAssertTrue(untouched.isBound)
-        XCTAssertFalse(staleWindow.isBound)
+        XCTAssertTrue(window.isBound)
+        assertEquals(mapping.forward[1], 100)
+        assertEquals(mapping.forward[2], 300)
     }
 
     func testDetectsNativeTabReplacement() {
-        assertEquals(
-            nativeTabReplacementCandidate(
-                previousFocusedWindowId: 1,
-                focusedWindowId: 2,
-                liveWindowIds: [2],
-                trackedWindowIds: [1, 2],
-                isMouseButtonDown: false,
-            ),
-            1,
-        )
+        let candidate = nativeTabRemapCandidate(previous: [100: .alive], current: [100: .invisible, 200: .alive], isMouseButtonDown: false)
+        assertEquals(candidate?.background, 100)
+        assertEquals(candidate?.frontmost, 200)
     }
 
     func testDoesNotReplaceLiveOrUntrackedPreviousWindow() {
-        XCTAssertNil(nativeTabReplacementCandidate(
-            previousFocusedWindowId: 1,
-            focusedWindowId: 2,
-            liveWindowIds: [1, 2],
-            trackedWindowIds: [1, 2],
-            isMouseButtonDown: false,
-        ))
-        XCTAssertNil(nativeTabReplacementCandidate(
-            previousFocusedWindowId: 1,
-            focusedWindowId: 2,
-            liveWindowIds: [2],
-            trackedWindowIds: [2],
-            isMouseButtonDown: false,
-        ))
+        XCTAssertNil(nativeTabRemapCandidate(previous: [100: .alive], current: [100: .alive, 200: .alive], isMouseButtonDown: false))
+        XCTAssertNil(nativeTabRemapCandidate(previous: [:], current: [200: .alive], isMouseButtonDown: false))
     }
 
     func testDefersNativeTabReplacementWhileDragging() {
-        XCTAssertNil(nativeTabReplacementCandidate(
-            previousFocusedWindowId: 1,
-            focusedWindowId: 2,
-            liveWindowIds: [2],
-            trackedWindowIds: [1, 2],
-            isMouseButtonDown: true,
-        ))
+        XCTAssertNil(nativeTabRemapCandidate(previous: [100: .alive], current: [100: .invisible, 200: .alive], isMouseButtonDown: true))
     }
 
-    func testReplacementRectFetchIsNonCancellable() {
-        XCTAssertEqual(nativeTabReplacementCancellationMode(replacingNativeTabWindowId: 2), .nonCancellable)
+    func testTabRemapNeedsNoCancellableRectFetch() {
+        let window = TestWindow.new(id: 1, parent: Workspace.get(byName: name).rootTilingContainer)
+        window.onGetAxRect = { XCTFail("A logical remap must not fetch AX geometry or splice nodes") }
+        var mapping = BiDictionary<OpaqueWindowId, UInt32>()
+        mapping.put(1, 100)
+        remapNativeTabWindow(background: 100, frontmost: 200, mapping: &mapping, window: window)
+        XCTAssertNotNil(window.onGetAxRect)
     }
 
-    func testNewWindowRectFetchStaysCancellable() {
-        XCTAssertEqual(nativeTabReplacementCancellationMode(replacingNativeTabWindowId: nil), .cancellable)
+    func testEarlyFocusedTabWaitsForEnumerationAndCanRemapOnNextCycle() {
+        XCTAssertFalse(shouldRegisterFocusedWindow(lifeStatus: .invisible, incomplete: false))
+        XCTAssertFalse(shouldRegisterFocusedWindow(lifeStatus: .alive, incomplete: true))
+        XCTAssertTrue(shouldRegisterFocusedWindow(lifeStatus: .alive, incomplete: false))
+        let candidate = nativeTabRemapCandidate(previous: [100: .alive, 200: .invisible], current: [100: .invisible, 200: .alive], isMouseButtonDown: false)
+        assertEquals(candidate?.background, 100)
+        assertEquals(candidate?.frontmost, 200)
     }
 
-    // Cmd-W on a browser window: the browser keys its long-lived window on another workspace
     func testAppFocusingItsWindowOnAnotherWorkspaceMeansTheOldWindowClosed() {
-        let closed = TestWindow.new(id: 1, parent: Workspace.get(byName: name).rootTilingContainer)
-        let elsewhere = TestWindow.new(id: 2, parent: Workspace.get(byName: "elsewhere").rootTilingContainer)
-
-        assertTrue(isWindowCloseRatherThanTabSwitch(stale: closed, focused: elsewhere))
+        let source = TestWindow.new(id: 1, parent: Workspace.get(byName: name).rootTilingContainer)
+        let destination = TestWindow.new(id: 2, parent: Workspace.get(byName: "elsewhere").rootTilingContainer)
+        XCTAssertFalse(canRemapNativeTabWindow(source: source, destination: destination))
+        XCTAssertNil(nativeTabRemapCandidate(previous: [100: .alive], current: [200: .alive], isMouseButtonDown: false))
     }
 
-    func testAppFocusingAnotherWindowOnTheSameWorkspaceMayBeATabSwitch() {
+    func testFloatingNativeTabPreservesItsParentAndFrame() {
         let workspace = Workspace.get(byName: name)
-        let oldTab = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
-        let otherTab = TestWindow.new(id: 2, parent: workspace.floatingWindowsContainer)
-
-        assertFalse(isWindowCloseRatherThanTabSwitch(stale: oldTab, focused: otherTab))
+        let window = TestWindow.new(id: 1, parent: workspace.floatingWindowsContainer)
+        window.lastFloatingSize = CGSize(width: 700, height: 500)
+        var mapping = BiDictionary<OpaqueWindowId, UInt32>()
+        mapping.put(1, 100)
+        XCTAssertTrue(canRemapNativeTabWindow(source: window, destination: nil))
+        remapNativeTabWindow(background: 100, frontmost: 200, mapping: &mapping, window: window)
+        XCTAssertTrue(window.parent === workspace.floatingWindowsContainer)
+        assertEquals(window.lastFloatingSize, CGSize(width: 700, height: 500))
     }
 
-    // Switching away from a native fullscreen window's Space takes it out of AXWindows; it hasn't closed
-    func testNativeFullscreenWindowLeftForAnotherWorkspaceIsNotTakenForClosed() {
-        let fullscreen = TestWindow.new(id: 1, parent: Workspace.get(byName: name).macOsNativeFullscreenWindowsContainer)
-        let elsewhere = TestWindow.new(id: 2, parent: Workspace.get(byName: "elsewhere").rootTilingContainer)
+    func testNativeFullscreenSpaceChangeIsNotTakenForTabSwap() {
+        let window = TestWindow.new(id: 1, parent: Workspace.get(byName: name).macOsNativeFullscreenWindowsContainer)
+        XCTAssertFalse(canRemapNativeTabWindow(source: window, destination: nil))
+    }
 
-        assertFalse(isWindowCloseRatherThanTabSwitch(stale: fullscreen, focused: elsewhere))
+    func testBorderUsesNativeIdentityAndSkipsInvisibleWindows() {
+        let window = TestWindow.new(id: OpaqueWindowId(4_294_967_301), parent: Workspace.get(byName: name).rootTilingContainer)
+        XCTAssertNil(nativeWindowIdForBorder(window))
+        window.nativeWindowIdForTest = 54321
+        assertEquals(nativeWindowIdForBorder(window), 54321)
+        window.lifeStatus = .invisible
+        XCTAssertNil(nativeWindowIdForBorder(window))
+    }
+
+    func testRemapInvalidatesPhysicalGeometryAndMinimaButKeepsUserSizingAndFocus() {
+        let workspace = Workspace.get(byName: name)
+        let window = TestWindow.new(id: 1, parent: workspace.rootTilingContainer)
+        let rect = Rect(topLeftX: 10, topLeftY: 20, width: 700, height: 500)
+        window.lastAppliedLayoutVirtualRect = rect
+        window.lastAppliedLayoutPhysicalRect = rect
+        window.observedMinimumSize = ObservedMinimumSize(width: 650, height: 400)
+        window.singleWindowWidthAdjustment = 50
+        window.focusModeHeightAdjustment = 25
+        window.isFullscreen = true
+        XCTAssertTrue(window.focusWindow())
+        workspaceFocusHold = nil
+        rememberWindowWorkspace(window)
+        var mapping = BiDictionary<OpaqueWindowId, UInt32>()
+        mapping.put(1, 100)
+
+        remapNativeTabWindow(background: 100, frontmost: 200, mapping: &mapping, window: window)
+        XCTAssertNil(window.lastAppliedLayoutPhysicalRect)
+        assertEquals(window.lastAppliedLayoutVirtualRect, rect)
+        assertEquals(window.observedMinimumSize, ObservedMinimumSize())
+        assertEquals(window.singleWindowWidthAdjustment, 50)
+        assertEquals(window.focusModeHeightAdjustment, 25)
+        XCTAssertTrue(window.isFullscreen)
+        XCTAssertTrue(globalFocus.windowOrNil === window)
+        XCTAssertNil(workspaceFocusHold)
+        XCTAssertTrue(collectWindowMovedEvents().isEmpty)
+        assertEquals(window.nativeGeometryGeneration, 1)
     }
 }

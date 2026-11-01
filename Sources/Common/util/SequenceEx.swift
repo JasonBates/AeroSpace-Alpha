@@ -137,6 +137,23 @@ extension Sequence {
         guard let _ = iterator.next() else { return .two(first, second) }
         return .many
     }
+
+    public func toArray() -> [Element] {
+        var result = [Element]()
+        var iterator = makeIterator()
+        while let next = iterator.next() {
+            result.append(next)
+        }
+        return result
+    }
+
+    public func associate<Value>(with valueProducer: (Element) -> Value) -> [Element: Value] {
+        var result = [Element: Value]()
+        for elem in self {
+            result[elem] = valueProducer(elem)
+        }
+        return result
+    }
 }
 
 public enum SequencePattern<Seq: Sequence> {

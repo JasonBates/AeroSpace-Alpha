@@ -93,7 +93,7 @@ final class MacosNativeFullscreenTest: XCTestCase {
         assertEquals(sibling.getWeight(.h), 400)
     }
 
-    func testDetectedFullscreenRestoresRootFlattenedByNormalization() async throws {
+    func testDetectedFullscreenRestoresChildAbsorbedIntoPreservedRoot() async throws {
         config.enableNormalizationFlattenContainers = true
         let workspace = Workspace.get(byName: name)
         let root = workspace.rootTilingContainer
@@ -119,8 +119,10 @@ final class MacosNativeFullscreenTest: XCTestCase {
         try await normalizeLayoutReason()
         workspace.normalizeContainers()
 
-        XCTAssertFalse(root.isBound)
-        XCTAssertTrue(workspace.rootTilingContainer === right)
+        XCTAssertTrue(root.isBound)
+        XCTAssertTrue(workspace.rootTilingContainer === root)
+        XCTAssertFalse(right.isBound)
+        assertEquals(root.layoutDescription, .h_accordion([.window(2), .window(3)]))
 
         fullscreen.isMacosFullscreenForTest = false
         try await normalizeLayoutReason()
