@@ -1,0 +1,72 @@
+= aerospace-launch-window(1)
+include::util/man-attributes.adoc[]
+:manname: aerospace-launch-window
+// tag::purpose[]
+:manpurpose: Choose the initial workspace for a window created by an external adapter
+// end::purpose[]
+
+== Synopsis
+[verse]
+// tag::synopsis[]
+aerospace launch-window [-h|--help] --app-bundle-id <bundle-id> [--workspace <workspace>] [--timeout <seconds>] -- <adapter> [<arg>...]
+// end::synopsis[]
+
+== Description
+// tag::body[]
+{manpurpose}
+
+The destination defaults to the focused workspace when the command is accepted.
+It is saved as a name before any app activation. AeroSpace first obtains a complete
+window baseline for the target app, then starts the absolute executable `<adapter>`
+with the supplied arguments. No shell is added. The adapter uses the configured
+exec environment plus command environment variables; its output is discarded.
+Keep app-specific scripting in the adapter.
+
+The command returns `accepted <token>` immediately. Acceptance is not completion.
+macOS unified logging reports `launch-window <token>` with `armed`, `placed`,
+`succeeded`, or a failure reason. Use Console with category `launch-window`, or
+`log stream --predicate 'subsystem BEGINSWITH "bobko.aerospace" AND category == "launch-window"'`.
+Lifecycle messages also go to stderr when available. Adapter arguments and output
+are not included in these lifecycle messages.
+One request per bundle is allowed; overlap fails as busy. Different apps are independent.
+
+The next new eligible logical window of the target process receives the saved
+workspace at its first tree insertion. Existing windows, native-tab remaps, closed
+window cache restores, dialogs, popups, hidden/minimized and native-fullscreen
+windows do not consume the request. Ordinary window-detected rules then run once
+and may move the window. The command adds no focus action or delayed focus repair.
+
+Matching is a bounded heuristic: a concurrent manually-created same-app window can
+be selected. When the app was not running, startup/restored windows cannot be
+distinguished from the adapter's window. Multiple running instances are rejected;
+process replacement or death cancels the request. Tokens reject late callbacks,
+but an unlabeled native window created after failure/cancellation can match a later
+request. Cancellation attempts to terminate the adapter; an AppleEvent already
+delivered cannot be recalled. No causal identity or first native-frame guarantee
+is made. The guarantee concerns AeroSpace's first managed placement.
+
+The deadline includes baseline acquisition and adapter completion. Incomplete or
+unavailable baselines fail without running the adapter. Timeout, disable, shutdown,
+adapter failure and target death cancel placement and request adapter termination.
+A cancelled request remains busy for its app until the owned adapter's exit is
+observed. The timeout bounds placement eligibility; an adapter that refuses to exit
+keeps that app busy until it exits or AeroSpace restarts. Other apps remain usable.
+A placed request remains
+busy until the adapter finishes, so a late adapter failure is logged even after
+placement; existing placement is not rolled back. Success requires both placement
+and a zero adapter exit status. Read-only and startup operation are unsupported.
+
+== Options
+include::util/conditional-options-header.adoc[]
+-h, --help:: Print help
+--app-bundle-id <bundle-id>:: Target application bundle identifier
+--workspace <workspace>:: Literal destination workspace name
+--timeout <seconds>:: Positive deadline in seconds, at most 120; default 10
+
+== Arguments
+include::util/conditional-arguments-header.adoc[]
+<adapter>:: Absolute executable path
+<arg>...:: Arguments passed directly to the executable
+// end::body[]
+
+include::util/man-footer.adoc[]

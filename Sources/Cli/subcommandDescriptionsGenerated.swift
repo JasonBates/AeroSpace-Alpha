@@ -19,6 +19,7 @@ let subcommandDescriptions = [
     ["  focus", "Set focus to a window."],
     ["  fullscreen", "Toggle the fullscreen mode for the focused window"],
     ["  join-with", "Put the focused window and the nearest node in the specified direction under a common parent container"],
+    ["  launch-window", "Choose the initial workspace for a window created by an external adapter"],
     ["  layout", "Change layout of the focused node to the given layout"],
     ["  list-apps", "Print the list of running applications that appears in the Dock and may have a user interface"],
     ["  list-exec-env-vars", "List environment variables that exec-* commands and callbacks are run with"],

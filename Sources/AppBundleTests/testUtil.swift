@@ -15,6 +15,8 @@ let projectRoot: URL = {
 
 @MainActor
 func setUpWorkspacesForTests() {
+    launchPlacement.cancelAll(reason: "test-reset")
+    resetClosedWindowsCache()
     forgetDisplacedWorkspacesForTests()
     setMonitorInfosForTests(nil)
     forgetDisplacedWorkspacesForTests() // Removing the previous test's monitors remembers their workspaces' homes

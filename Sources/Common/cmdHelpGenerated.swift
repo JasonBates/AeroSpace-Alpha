@@ -72,6 +72,9 @@ let fullscreen_help_generated = """
 let join_with_help_generated = """
     USAGE: join-with [-h|--help] [--window-id <window-id>] (left|down|up|right)
     """
+let launch_window_help_generated = """
+    USAGE: launch-window [-h|--help] --app-bundle-id <bundle-id> [--workspace <workspace>] [--timeout <seconds>] -- <adapter> [<arg>...]
+    """
 let layout_help_generated = """
     USAGE: layout [-h|--help] [--window-id <window-id>|--workspace <workspace>]
                   [--root] [--fail-if-noop]

@@ -22,23 +22,53 @@ final class MacWindow: Window {
 
     @MainActor
     @discardableResult
-    static func getOrRegister(windowId: OpaqueWindowId, macApp: MacApp) async throws -> MacWindow {
+    static func getOrRegister(windowId: OpaqueWindowId, macApp: MacApp) async throws -> MacWindow? {
         if let existing = allWindowsMap[windowId] { return existing }
+        let bundleId = macApp.rawAppBundleId ?? ""
+        let launchToken = launchPlacement.candidateToken(bundleId: bundleId)
+        let nativeIdBeforeReads = macApp.nativeWindowId(of: windowId)
         let rect = try await macApp.getAxRect(windowId, .cancellable)
-        let data = try await unbindAndGetBindingDataForNewWindow(
-            windowId,
-            macApp,
-            isStartup
-                ? (rect?.center.monitorApproximation ?? mainMonitorInfo).visibleWorkspace
-                : globalFocus.workspace,
-            window: nil,
-            .cancellable,
-        )
+        let fallbackWorkspace = isStartup
+            ? (rect?.center.monitorApproximation ?? mainMonitorInfo).visibleWorkspace
+            : globalFocus.workspace
+        let windowLevel = try await macApp.getWindowLevel(windowId, .cancellable)
+        let windowType = try await macApp.getAxUiElementWindowType(windowId, windowLevel, .cancellable)
+        let minimized = launchToken == nil ? nil : try await macApp.isMacosNativeMinimized(windowId, .cancellable)
+        let fullscreen = launchToken == nil ? nil : try await macApp.isMacosNativeFullscreen(windowId, .cancellable)
 
-        // atomic synchronous section
+        // Final claim, workspace resolution and tree insertion are one synchronous section.
+        // Every AX read above can suspend, expire the token or reconcile a native tab.
+        try checkCancellation()
         if let existing = allWindowsMap[windowId] {
             return existing
         }
+        guard isInitialWindowRegistrationCurrent(nativeIdBeforeReads: nativeIdBeforeReads, nativeIdAfterReads: macApp.nativeWindowId(of: windowId)) else {
+            scheduleEnumerationRetry()
+            return nil
+        }
+        let snapshot = macApp.launchPlacementSnapshot
+        let observation = launchWindowProcessIdentity(macApp.nsApp).map { identity in
+            LaunchWindowObservation(
+                process: identity,
+                windowId: windowId,
+                windowType: windowType,
+                isAliveAndComplete: !macApp.nsApp.isTerminated && snapshot?.incomplete == false && snapshot?.windows[windowId] == .alive,
+                nativeMappingIsStable: nativeIdBeforeReads != nil && nativeIdBeforeReads == macApp.nativeWindowId(of: windowId),
+                isHidden: macApp.nsApp.isHidden,
+                isMinimized: minimized,
+                isFullscreen: fullscreen,
+                isRegistered: false,
+                restoresClosedWindow: isClosedWindowCached(windowId),
+            )
+        }
+        let data = initialWindowBindingData(
+            windowType: windowType,
+            fallbackWorkspace: fallbackWorkspace,
+            placement: launchPlacement,
+            bundleId: bundleId,
+            token: launchToken,
+            observation: observation,
+        )
         let window = MacWindow(windowId, macApp, lastFloatingSize: rect?.size, parent: data.parent, adaptiveWeight: data.adaptiveWeight, index: data.index)
         window.isAwaitingOnWindowDetected = true
         allWindowsMap[windowId] = window
@@ -238,6 +268,12 @@ final class MacWindow: Window {
     }
 }
 
+/// AX replies can belong to a native backing window displaced during a tab remap.
+/// A stale logical ID must not be inserted even when no launch request is active.
+func isInitialWindowRegistrationCurrent(nativeIdBeforeReads: UInt32?, nativeIdAfterReads: UInt32?) -> Bool {
+    nativeIdBeforeReads != nil && nativeIdBeforeReads == nativeIdAfterReads
+}
+
 extension Window {
     @MainActor
     func relayoutWindow(on workspace: Workspace, _ cm: CancellationMode, forceTile: Bool = false) async throws {
@@ -271,6 +307,25 @@ private func unbindAndGetBindingDataForNewTilingWindow(_ workspace: Workspace, w
             adaptiveWeight: WEIGHT_AUTO,
             index: INDEX_BIND_LAST,
         )
+    }
+}
+
+/// Shared deterministic seam for first binding. Callers insert immediately, without awaiting.
+@MainActor
+func initialWindowBindingData(
+    windowType: AxUiElementWindowType,
+    fallbackWorkspace: Workspace,
+    placement: LaunchPlacement,
+    bundleId: String,
+    token: UUID?,
+    observation: LaunchWindowObservation?,
+) -> BindingData {
+    let launchWorkspace = observation.flatMap { placement.claim(bundleId: bundleId, token: token, observation: $0) }
+    let workspace = launchWorkspace.map { Workspace.get(byName: $0) } ?? fallbackWorkspace
+    return switch windowType {
+        case .popup: BindingData(parent: macosPopupWindowsContainer, adaptiveWeight: WEIGHT_AUTO, index: INDEX_BIND_LAST)
+        case .dialog: BindingData(parent: workspace.floatingWindowsContainer, adaptiveWeight: WEIGHT_AUTO, index: INDEX_BIND_LAST)
+        case .window: unbindAndGetBindingDataForNewTilingWindow(workspace, window: nil)
     }
 }
 

@@ -52,6 +52,8 @@ aerospace -h;
 
     | join-with [--window-id <window_id>] (left|down|up|right)
 
+    | launch-window [<launch_window_flag>]... --app-bundle-id <app_bundle_id> [<launch_window_flag>]... -- <adapter> [<adapter_arg>...]
+
     | layout [--window-id <window_id>|--root|--workspace <workspace>|--fail-if-noop]... (<layouts>)... [--window-id <window_id>|--root|--workspace <workspace>|--fail-if-noop]...
     | layout (--for-next-detected-window|tiling|floating)...
 
@@ -128,6 +130,9 @@ aerospace -h;
 <number> ::= {{{ true }}};
 <monitor_pattern> ::= {{{ true }}};
 <layouts> ::= h_tiles|v_tiles|h_accordion|v_accordion|tiles|accordion|horizontal|vertical|tiling|floating;
+<launch_window_flag> ::= --workspace <workspace> | --timeout <number>;
+<adapter> ::= {{{ true }}};
+<adapter_arg> ::= {{{ true }}};
 
 <list_workspaces1_flag> ::= --visible [no] | --empty [no] | --format <output_format> | --format <output_format> | --count | --json;
 

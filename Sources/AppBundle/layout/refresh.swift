@@ -158,7 +158,7 @@ private func refresh() async throws {
             // A focused native tab may arrive before AXWindows; invisible unknown IDs are only
             // placeholders until a complete enumeration can match them to their logical window.
             if MacWindow.allWindowsMap[windowId] == nil && !shouldRegisterFocusedWindow(lifeStatus: lifeStatus, incomplete: result.incomplete) { continue }
-            try await MacWindow.getOrRegister(windowId: windowId, macApp: app).lifeStatus = lifeStatus
+            try await MacWindow.getOrRegister(windowId: windowId, macApp: app)?.lifeStatus = lifeStatus
         }
     }
 

@@ -44,6 +44,8 @@ extension CmdArgs {
                 command = JoinWithCommand(args: self as! JoinWithCmdArgs)
             case .layout:
                 command = LayoutCommand(args: self as! LayoutCmdArgs)
+            case .launchWindow:
+                command = LaunchWindowCommand(args: self as! LaunchWindowCmdArgs)
             case .listApps:
                 command = ListAppsCommand(args: self as! ListAppsCmdArgs)
             case .listExecEnvVars:

@@ -29,6 +29,7 @@ final class MacApp: AbstractApp {
     private var focusedWindowAwaitingEnumeration: UInt32?
     private var windowsCount = 0
     var lastFocusedNativeWindowOpaqueId: OpaqueWindowId? = nil
+    @MainActor private(set) var launchPlacementSnapshot: MacAppRefreshResult?
     private var thread: Thread?
     private var setFrameJobs: [OpaqueWindowId: RunLoopJob] = [:]
     // Never pruned: while the screen is locked, AX reports windows as gone, and closedWindowsCache matches
@@ -395,17 +396,26 @@ final class MacApp: AbstractApp {
         }
     }
 
-    @MainActor private func refreshAndGetAliveWindowIds(frontmostAppBundleId: String?) async throws -> MacAppRefreshResult {
+    @MainActor private func refreshAndGetAliveWindowIds(frontmostAppBundleId: String?, requireCompleteEnumeration: Bool = false) async throws -> MacAppRefreshResult {
         if nsApp.isTerminated {
             await destroy()
+            if requireCompleteEnumeration { throw LaunchWindowBaselineError.unavailable }
             return .empty
         }
-        guard let thread else { return .empty }
+        guard let thread else {
+            if requireCompleteEnumeration { throw LaunchWindowBaselineError.unavailable }
+            return .empty
+        }
         let previousStatuses = lifeStatusesOfLastRefresh
         let snapshot = try await thread
             .runInLoop(.cancellable) { [pid, windows, axApp, bgTabsScheduledForPrune] job -> ([UInt32: WindowLifeStatus], Bool) in
                 var tracked = windows.threadGuarded.filter { !bgTabsScheduledForPrune.contains($0.key) }
-                let (axWindows, error) = axApp.threadGuarded.getOrError(Ax.windowsAttr)
+                let (axWindows, error) = axApp.threadGuarded.getOrError(requireCompleteEnumeration ? Ax.launchBaselineWindowsAttr : Ax.windowsAttr)
+                // The normal refresh tolerates unavailable AX attributes. A launch baseline must
+                // distinguish a successful empty array from an unreadable/failed enumeration.
+                if requireCompleteEnumeration && (error != .success || axWindows == nil) {
+                    throw LaunchWindowBaselineError.unavailable
+                }
                 var unresponsive = error == .cannotComplete
                 var windowServerWindowIds: Set<UInt32>?
                 if frontmostAppBundleId != lockScreenAppBundleId {
@@ -429,6 +439,13 @@ final class MacApp: AbstractApp {
                         try job.checkCancellation()
                         try tracked.getOrRegisterAxWindow(windowId: id, window, pid, job)
                     }
+                }
+                if requireCompleteEnumeration && !launchWindowEnumerationIsComplete(
+                    attributeSucceeded: error == .success,
+                    enumerated: axWindows.map { Set($0.map(\.windowId)) },
+                    tracked: Set(tracked.keys),
+                ) {
+                    throw LaunchWindowBaselineError.unavailable
                 }
                 windows.threadGuarded = tracked
                 let statuses = tracked.keys.associate { id in
@@ -458,7 +475,30 @@ final class MacApp: AbstractApp {
             setFrameJobs.removeValue(forKey: windowId)?.cancel()
         }
         let awaitingFocusedWindow = focusedWindowAwaitingEnumeration.map { aliveOrInvisible[$0] != .alive } == true
-        return MacAppRefreshResult(windows: result, incomplete: incomplete || awaitingFocusedWindow)
+        let snapshotResult = MacAppRefreshResult(windows: result, incomplete: incomplete || awaitingFocusedWindow)
+        launchPlacementSnapshot = snapshotResult
+        return snapshotResult
+    }
+
+    /// Reuse the upstream enumeration and native-tab reconciliation; never infer logical IDs here.
+    @MainActor static func launchWindowBaseline(bundleId: String) async throws -> LaunchWindowBaseline {
+        let processes = try launchWindowRunningProcesses(bundleId)
+        guard processes.count <= 1 else { throw LaunchWindowBaselineError.unavailable }
+        guard let identity = processes.first else { return LaunchWindowBaseline(process: nil, windowIds: []) }
+        guard let nsApp = NSRunningApplication(processIdentifier: identity.pid),
+              let app = try await getOrRegister(nsApp), launchWindowProcessIdentity(app.nsApp) == identity
+        else {
+            throw LaunchWindowBaselineError.unavailable
+        }
+        let snapshot = try await app.refreshAndGetAliveWindowIds(
+            frontmostAppBundleId: NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+            requireCompleteEnumeration: true,
+        )
+        guard !snapshot.incomplete, !nsApp.isTerminated,
+              try launchWindowRunningProcesses(bundleId) == [identity] else { throw LaunchWindowBaselineError.unavailable }
+        app.reconcileKnownWindows(snapshot)
+        let managedIds = MacWindow.allWindows.filter { $0.macApp === app }.map(\.windowId)
+        return LaunchWindowBaseline(process: identity, windowIds: Set(snapshot.windows.keys).union(managedIds))
     }
 
     private var bgTabsScheduledForPrune: Set<UInt32> = []
@@ -503,7 +543,11 @@ final class MacApp: AbstractApp {
     }
 
     private func destroy() async {
-        _ = await Task.startUnstructured { @MainActor [pid] in _ = MacApp.allAppsMap.removeValue(forKey: pid) }.result
+        let identity = launchWindowProcessIdentity(nsApp)
+        _ = await Task.startUnstructured { @MainActor [pid, identity] in
+            if let identity { launchPlacement.processTerminated(identity) }
+            _ = MacApp.allAppsMap.removeValue(forKey: pid)
+        }.result
         for (_, job) in setFrameJobs {
             job.cancel()
         }
