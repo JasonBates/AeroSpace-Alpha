@@ -22,6 +22,17 @@ with the supplied arguments. No shell is added. The adapter uses the configured
 exec environment plus command environment variables; its output is discarded.
 Keep app-specific scripting in the adapter.
 
+The adapter also receives two creation hints captured with the destination before
+baseline acquisition or app activation. `AEROSPACE_LAUNCH_WORKSPACE` is the saved
+workspace name. `AEROSPACE_LAUNCH_MONITOR_BOUNDS` is a JSON array
+`[x,y,width,height]` of that workspace's monitor visible rectangle in macOS
+Accessibility coordinates: top-left origin, in points, with y increasing downward.
+The rectangle excludes the menu bar and Dock; it does not subtract AeroSpace gaps.
+These exact launch values override identically named configured or command
+environment variables. An adapter may ignore the hints, or use them to request
+app-specific initial bounds. They cannot guarantee the first native frame and do
+not change AeroSpace's authoritative first managed placement.
+
 The command returns `accepted <token>` immediately. Acceptance is not completion.
 macOS unified logging reports `launch-window <token>` with `armed`, `placed`,
 `succeeded`, or a failure reason. Use Console with category `launch-window`, or

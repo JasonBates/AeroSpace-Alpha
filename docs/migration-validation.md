@@ -1,11 +1,38 @@
 # Window identity migration: lifecycle validation
 
-Validation date: 1 November 2026. These checks exercise the migrated production
-model with deterministic synthetic windows. They do not launch or control an
-AeroSpace application. The original installed Alpha and its configuration were
-not changed.
+Validation date: 1 November 2026. This report separates deterministic model
+coverage from the later, explicitly authorized native trial. The original
+source and configuration checkouts remain intact; the installed app has been
+switched between isolated candidate and rollback packages.
 
-## Verified candidate for a controlled trial
+## Current native trial
+
+The identity candidate was installed and exercised with ordinary moving,
+resizing and closing. Both directions of the isolated old/new switch have been
+tested. Wallpaper flicker persisted with AeroSpace fully exited and was resolved
+by selecting fixed 144 Hz on the two affected displays; no border or lifecycle
+source change was needed for that symptom.
+
+The subsequent launch-placement candidate captures the destination workspace
+before app activation. Its first version passed the complete repository gate
+and 673 Swift tests. Native testing then exposed three integration gaps that
+mocked tests did not cover: Ghostty's lowercase executable name, missing Finder
+LaunchServices dates plus its non-window desktop accessibility entry, and the
+need for app adapters to activate the exact window they create.
+
+The corrected Ghostty adapter has passed a right-monitor placement/focus trial.
+The Comet adapter has passed the same trial with creation-time bounds: its first
+sampled visible frame was already on the requested monitor. Six earlier trials
+verified logical placement across all three monitors but failed full focus
+acceptance; those are not counted as complete UX passes. Existing windows were
+preserved and starting workspace/focus restored after each trial.
+
+Finder's native bridge repair and the complete integrated launch trial are
+pending. The usual live launcher has been restored while those repairs are
+verified. These checks do not establish completion of the full macOS lifecycle
+checklist or long-term daily-use acceptance.
+
+## Initial offline acceptance (historical)
 
 The packaged source is `5d331fa5de90e5a967a029ae892cacd635345083`, version
 `0.21.3-window-identity-candidate`. Later documentation-only commits do not change
@@ -37,11 +64,11 @@ both directions; its README contains preflight, trial and rollback commands.
 It restores workspace assignments and ordinary floating/tiling state, not exact
 trees, floating frames or native fullscreen/hidden/minimized state.
 
-This is a suitable base for a controlled trial of Alpha on upstream's new identity
-model. It is not yet daily-use acceptance: no candidate app was launched, no live
-switch was attempted, and the macOS-only checklist below remains to be exercised.
-The original checkout, installed process/app/CLI, configuration and helper links
-were verified unchanged after packaging and preflight.
+At this checkpoint, the candidate was ready for a controlled trial of Alpha on
+upstream's new identity model. No candidate app had yet been launched or switched;
+the original checkout, installed app/CLI, configuration and helper links were
+verified unchanged after packaging and preflight. The current trial status above
+supersedes that earlier runtime state.
 
 ## Automated coverage
 

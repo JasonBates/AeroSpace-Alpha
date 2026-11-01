@@ -4,12 +4,13 @@ import Foundation
 /// PID alone does not identify a process after a relaunch/PID reuse.
 struct LaunchProcessIdentity: Equatable, Sendable {
     let pid: Int32
-    let launchedAt: Date
+    let startSeconds: UInt64
+    let startMicroseconds: UInt64
 
     // Keep this explicit: process identity includes launch time, not only PID.
     // swiftformat:disable:next redundantEquatable
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.pid == rhs.pid && lhs.launchedAt == rhs.launchedAt
+        lhs.pid == rhs.pid && lhs.startSeconds == rhs.startSeconds && lhs.startMicroseconds == rhs.startMicroseconds
     }
 }
 

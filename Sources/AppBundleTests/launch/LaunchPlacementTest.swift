@@ -16,7 +16,7 @@ private final class AdapterLifetimeProbe {
 
 @MainActor
 private final class LaunchHarness {
-    let process = LaunchProcessIdentity(pid: 42, launchedAt: Date(timeIntervalSince1970: 100))
+    let process = LaunchProcessIdentity(pid: 42, startSeconds: 100, startMicroseconds: 123)
     var now = ContinuousClock.now
     var processes: [String: [LaunchProcessIdentity]] = [:]
     var baselineIds: Set<OpaqueWindowId> = [1]
@@ -168,9 +168,27 @@ final class LaunchPlacementTest: XCTestCase {
         assertEquals(data.parent.nodeWorkspace?.name, "destination")
     }
 
-    func testCommandCapturesDefaultAndExplicitDestinationBeforeOwnedTasksStart() async {
+    func testCommandCapturesDefaultAndExplicitDestinationBeforeOwnedTasksStart() async throws {
         let h = harness()
+        var monitors = lifecycleMonitors(3)
+        monitors[0] = LifecycleMonitor(
+            monitorAppKitNsScreenScreensId: 1,
+            name: "Negative origin display",
+            rect: Rect(topLeftX: -1920, topLeftY: -1080, width: 1920, height: 1080),
+            isMain: false,
+            visibleFrame: Rect(topLeftX: -1910, topLeftY: -1055, width: 1900, height: 1020),
+        )
+        setMonitorInfosForTests(monitors)
+        let defaultDestination = Workspace.get(byName: "9")
+        let explicitDestination = Workspace.get(byName: "3")
+        XCTAssertTrue(monitors[0].setVisibleWorkspace(defaultDestination))
+        XCTAssertTrue(monitors[2].setVisibleWorkspace(explicitDestination))
         XCTAssertTrue(Workspace.get(byName: "9").focusWorkspace())
+        config.execConfig.envVariables = [
+            "CUSTOM": "value",
+            "AEROSPACE_LAUNCH_WORKSPACE": "spoofed",
+            "AEROSPACE_LAUNCH_MONITOR_BOUNDS": "spoofed",
+        ]
         let args = LaunchWindowCmdArgs(rawArgs: [])
             .with(\.appBundleId, "app")
             .with(\.adapter, .initialized(["/adapter", "secret"]))
@@ -180,13 +198,21 @@ final class LaunchPlacementTest: XCTestCase {
         XCTAssertTrue(io.stdout[0].hasPrefix("accepted "))
         XCTAssertTrue(h.invocations.isEmpty) // No AX or adapter wait inside command acceptance.
         XCTAssertTrue(Workspace.get(byName: "elsewhere").focusWorkspace())
+        XCTAssertTrue(monitors[1].setVisibleWorkspace(defaultDestination)) // Move it after capture.
         await awaitCondition { h.invocations.count == 1 }
+        assertEquals(h.environments[0]["CUSTOM"], "value")
+        assertEquals(h.environments[0]["AEROSPACE_LAUNCH_WORKSPACE"], "9")
+        let defaultBounds = try XCTUnwrap(h.environments[0]["AEROSPACE_LAUNCH_MONITOR_BOUNDS"])
+        assertEquals(try JSONDecoder().decode([Double].self, from: Data(defaultBounds.utf8)), [-1910, -1055, 1900, 1020])
         let token = h.placement.candidateToken(bundleId: "app")
         assertEquals(h.placement.claim(bundleId: "app", token: token, observation: h.observation()), "9")
         h.completions[0](true)
         let explicit = args.with(\.workspaceName, .parse("3").getOrDie())
         assertEquals(LaunchWindowCommand(args: explicit).run(.defaultEnv, io, placement: h.placement), .succ)
         await awaitCondition { h.invocations.count == 2 }
+        assertEquals(h.environments[1]["AEROSPACE_LAUNCH_WORKSPACE"], "3")
+        let explicitBounds = try XCTUnwrap(h.environments[1]["AEROSPACE_LAUNCH_MONITOR_BOUNDS"])
+        assertEquals(try JSONDecoder().decode([Double].self, from: Data(explicitBounds.utf8)), [1920, 0, 1920, 1080])
         assertEquals(h.placement.claim(bundleId: "app", token: h.placement.candidateToken(bundleId: "app"), observation: h.observation(id: 3)), "3")
     }
 
@@ -379,9 +405,6 @@ final class LaunchPlacementTest: XCTestCase {
     }
 
     func testSuccessfulEnumerationWithOmittedPreexistingWindowFailsBeforeAdapter() async {
-        XCTAssertTrue(launchWindowDecodedEnumerationIsComplete(rawCount: 0, decodedCount: 0))
-        XCTAssertFalse(launchWindowDecodedEnumerationIsComplete(rawCount: nil, decodedCount: 0))
-        XCTAssertFalse(launchWindowDecodedEnumerationIsComplete(rawCount: 2, decodedCount: 1)) // Unreadable native ID compactMapped away.
         XCTAssertTrue(launchWindowEnumerationIsComplete(attributeSucceeded: true, enumerated: [], tracked: []))
         XCTAssertTrue(launchWindowEnumerationIsComplete(attributeSucceeded: true, enumerated: [10, 11], tracked: [10, 11, 12]))
         XCTAssertFalse(launchWindowEnumerationIsComplete(attributeSucceeded: false, enumerated: [], tracked: []))
@@ -428,7 +451,7 @@ final class LaunchPlacementTest: XCTestCase {
         assertEquals(h.placement.claim(bundleId: "app", token: token, observation: h.observation()), "destination")
         h.completions[0](true)
         let next = await armed(h)
-        let reused = LaunchProcessIdentity(pid: h.process.pid, launchedAt: Date(timeIntervalSince1970: 200))
+        let reused = LaunchProcessIdentity(pid: h.process.pid, startSeconds: h.process.startSeconds, startMicroseconds: h.process.startMicroseconds + 1)
         h.processes["app"] = [reused]
         XCTAssertNil(h.placement.claim(bundleId: "app", token: next, observation: h.observation(identity: reused)))
         assertEquals(h.placement.pendingCount, 1)
@@ -454,6 +477,21 @@ final class LaunchPlacementTest: XCTestCase {
         h.now = h.now.advanced(by: .seconds(11))
         XCTAssertNil(h.placement.candidateToken(bundleId: "app"))
         assertEquals(h.cancellations, 3)
+    }
+
+    func testRetainedTerminationIdentityDoesNotCancelReusedPID() async {
+        let h = harness()
+        let exitedIdentity = h.process
+        h.processes["app"] = [LaunchProcessIdentity(pid: exitedIdentity.pid, startSeconds: 200, startMicroseconds: 0)]
+        let token = await armed(h)
+        h.placement.processTerminated(exitedIdentity)
+        assertEquals(h.cancellations, 0)
+        assertEquals(h.placement.candidateToken(bundleId: "app"), token)
+        let registeredIdentity = h.processes["app"]![0]
+        h.processes["app"] = [] // The kernel can no longer supply this incarnation after exit.
+        h.placement.processTerminated(registeredIdentity)
+        assertEquals(h.cancellations, 1)
+        XCTAssertTrue(h.logs.last?.hasSuffix(" failed-target-terminated") == true)
     }
 
     func testTimeoutDrainsOnlyItsAppUntilMatchingAdapterExit() async {

@@ -23,6 +23,8 @@ final class MacApp: AbstractApp {
     /*conforms*/ let rawAppBundleId: String?
     let appId: KnownBundleId?
     let nsApp: NSRunningApplication
+    /// Retain this incarnation after exit, when kernel lookup can no longer recover it.
+    private let launchProcessIdentity: LaunchProcessIdentity?
     private let axApp: ThreadGuardedValue<AXUIElement>
     private let appAxSubscriptions: ThreadGuardedValue<[AxSubscription]> // keep subscriptions in memory
     private let windows: ThreadGuardedValue<[UInt32: AxWindow]> = .init([:])
@@ -57,6 +59,7 @@ final class MacApp: AbstractApp {
         _ thread: Thread,
     ) {
         self.nsApp = nsApp
+        self.launchProcessIdentity = launchWindowProcessIdentity(nsApp)
         self.axApp = .init(axApp)
         self.pid = pid
         self.rawAppBundleId = nsApp.bundleIdentifier
@@ -486,7 +489,8 @@ final class MacApp: AbstractApp {
         guard processes.count <= 1 else { throw LaunchWindowBaselineError.unavailable }
         guard let identity = processes.first else { return LaunchWindowBaseline(process: nil, windowIds: []) }
         guard let nsApp = NSRunningApplication(processIdentifier: identity.pid),
-              let app = try await getOrRegister(nsApp), launchWindowProcessIdentity(app.nsApp) == identity
+              let app = try await getOrRegister(nsApp), app.launchProcessIdentity == identity,
+              launchWindowProcessIdentity(app.nsApp) == identity
         else {
             throw LaunchWindowBaselineError.unavailable
         }
@@ -543,7 +547,7 @@ final class MacApp: AbstractApp {
     }
 
     private func destroy() async {
-        let identity = launchWindowProcessIdentity(nsApp)
+        let identity = launchProcessIdentity
         _ = await Task.startUnstructured { @MainActor [pid, identity] in
             if let identity { launchPlacement.processTerminated(identity) }
             _ = MacApp.allAppsMap.removeValue(forKey: pid)
