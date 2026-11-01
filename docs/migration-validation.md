@@ -5,6 +5,44 @@ model with deterministic synthetic windows. They do not launch or control an
 AeroSpace application. The original installed Alpha and its configuration were
 not changed.
 
+## Verified candidate for a controlled trial
+
+The packaged source is `5d331fa5de90e5a967a029ae892cacd635345083`, version
+`0.21.3-window-identity-candidate`. Later documentation-only commits do not change
+that package's source revision. The isolated switcher is verified at `6c4cdf0`
+in the `migration/window-identity-switching` branch of aerospace-config.
+
+| Completed check | Result |
+| --- | --- |
+| Complete Swift suite | 652 tests, zero failures |
+| Standard-use simulations | 24 scenarios, six fixed seeds, 600 mixed rounds and 1,801 checked transitions after repair |
+| Focused lifecycle repair coverage | 22 additional tests, including delayed floating drag/drop replies |
+| Parent's clean repository `./test.sh` | PASS: warnings-as-errors, tests, CLI help/version, lint, generation and clean-tree gate |
+| Switcher tests | 55 pass; parent and independent reviewer reran them |
+| Independent review | Both findings reproduced or confirmed, repaired and closed; no further defect found in the narrow follow-up |
+| Signed release | Apple Silicon and Intel app/CLI pass signature, embedded revision and repository release validation |
+| Real read-only preflight | Both candidate and rollback packages pass against the running legacy server; no switch performed |
+
+Two complete clean release builds passed before the final floating-drag guard.
+The final release reused build products, omitting only Xcode's clean step and
+limiting its jobs to four; all release generation, signing, packing and validation
+steps remained enabled. The final package manifest records hashes of the signed
+app executable and CLI and their exact source revision.
+
+Packages are isolated under `~/.local/share/aerospace-migration-builds/`:
+`window-identity-5d331fa5` and `known-good-d33ab826`. The latter is byte-for-byte
+identical to the installed app and CLI. The existing switcher does not list this
+separate build root. Use the isolated aerospace-config-migration switcher for
+both directions; its README contains preflight, trial and rollback commands.
+It restores workspace assignments and ordinary floating/tiling state, not exact
+trees, floating frames or native fullscreen/hidden/minimized state.
+
+This is a suitable base for a controlled trial of Alpha on upstream's new identity
+model. It is not yet daily-use acceptance: no candidate app was launched, no live
+switch was attempted, and the macOS-only checklist below remains to be exercised.
+The original checkout, installed process/app/CLI, configuration and helper links
+were verified unchanged after packaging and preflight.
+
 ## Automated coverage
 
 `Sources/AppBundleTests/LifecycleSimulationTest.swift` runs complete command and
