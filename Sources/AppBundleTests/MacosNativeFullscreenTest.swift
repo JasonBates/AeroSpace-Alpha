@@ -43,8 +43,9 @@ final class MacosNativeFullscreenTest: XCTestCase {
 
         fullscreen.isMacosFullscreenForTest = true
         try await normalizeLayoutReason()
-        left.setWeight(.h, 250)
-        right.setWeight(.h, 450)
+        // Model automatic layout normalization, rather than an intentional resize.
+        left.setLayoutWeight(.h, 250)
+        right.setLayoutWeight(.h, 450)
 
         fullscreen.isMacosFullscreenForTest = false
         try await normalizeLayoutReason()

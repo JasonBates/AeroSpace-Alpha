@@ -228,6 +228,68 @@ extension TilingContainer {
             ? adaptiveEffectiveHorizontalGap(configuredGap: configuredGap, width: width, childCount: children.count)
             : configuredGap
 
+        let (displayedWeights, effectiveGap) = tileAllocation(
+            children: children,
+            width: width,
+            height: height,
+            rawGap: rawGap,
+            configuredGap: configuredGap,
+            context: context,
+        )
+        rawGap = effectiveGap
+        let lastIndex = children.indices.last
+        for (i, child) in children.enumerated() {
+            let displayedWeight = displayedWeights[i]
+            // Gaps. Consider 4 cases:
+            // 1. Multiple children. Layout first child
+            // 2. Multiple children. Layout last child
+            // 3. Multiple children. Layout child in the middle
+            // 4. Single child   let rawGap = gaps.inner.get(orientation).toDouble()
+            let gap = rawGap - (i == 0 ? rawGap / 2 : 0) - (i == lastIndex ? rawGap / 2 : 0)
+            let rawChildWidth = orientation == .h ? displayedWeight - gap : width
+            let childWidth = context.adaptiveLayoutEnabled ? max(1, rawChildWidth) : rawChildWidth
+            let childHeight = orientation == .v ? max(0.000_001, displayedWeight - gap) : height
+            try await child.layoutRecursive(
+                i == 0 ? point : point.addingOffset(orientation, rawGap / 2),
+                width: childWidth,
+                height: childHeight,
+                virtual: Rect(
+                    topLeftX: virtualPoint.x,
+                    topLeftY: virtualPoint.y,
+                    width: orientation == .h ? displayedWeight : width,
+                    height: orientation == .v ? displayedWeight : height,
+                ),
+                context,
+            )
+            virtualPoint = orientation == .h ? virtualPoint.addingXOffset(displayedWeight) : virtualPoint.addingYOffset(displayedWeight)
+            point = orientation == .h ? point.addingXOffset(displayedWeight) : point.addingYOffset(displayedWeight)
+        }
+    }
+
+    /// This entire projection is synchronous: no temporary weight is exposed across a recursive layout await.
+    @MainActor
+    private func tileAllocation(
+        children: [TreeNode],
+        width: CGFloat,
+        height: CGFloat,
+        rawGap: CGFloat,
+        configuredGap: CGFloat,
+        context: LayoutContext,
+    ) -> ([CGFloat], CGFloat) {
+        var rawGap = rawGap
+        let retainsInvisibleShares = children.count != self.children.count
+        let retainedWeights = children.map { $0.getWeight(orientation) }
+        let retainedCache = adaptiveLayoutProportionCache
+        defer {
+            if retainsInvisibleShares {
+                for (child, weight) in zip(children, retainedWeights) { child.setLayoutWeight(orientation, weight) }
+                adaptiveLayoutProportionCache = retainedCache
+            }
+        }
+        if retainsInvisibleShares {
+            let projected = projectedWeights(children: children, dimension: orientation == .h ? width : height)
+            for (child, weight) in zip(children, projected) { child.setLayoutWeight(orientation, weight) }
+        }
         preserveAdaptiveProportionsIfNeeded(
             children: children,
             dimension: orientation == .h ? width : height,
@@ -257,38 +319,13 @@ extension TilingContainer {
             )
         }
 
-        let inhabitedChildren = children
-
-        guard let delta = ((orientation == .h ? width : height) - CGFloat(inhabitedChildren.sumOfDouble { $0.getWeight(orientation) }))
-            .div(inhabitedChildren.count) else { return }
-
-        let lastIndex = inhabitedChildren.indices.last
-        for (i, child) in inhabitedChildren.enumerated() {
-            child.setWeight(orientation, child.getWeight(orientation) + delta)
-            // Gaps. Consider 4 cases:
-            // 1. Multiple children. Layout first child
-            // 2. Multiple children. Layout last child
-            // 3. Multiple children. Layout child in the middle
-            // 4. Single child   let rawGap = gaps.inner.get(orientation).toDouble()
-            let gap = rawGap - (i == 0 ? rawGap / 2 : 0) - (i == lastIndex ? rawGap / 2 : 0)
-            let rawChildWidth = orientation == .h ? child.hWeight - gap : width
-            let childWidth = context.adaptiveLayoutEnabled ? max(1, rawChildWidth) : rawChildWidth
-            let childHeight = orientation == .v ? max(0.000_001, child.vWeight - gap) : height
-            try await child.layoutRecursive(
-                i == 0 ? point : point.addingOffset(orientation, rawGap / 2),
-                width: childWidth,
-                height: childHeight,
-                virtual: Rect(
-                    topLeftX: virtualPoint.x,
-                    topLeftY: virtualPoint.y,
-                    width: orientation == .h ? child.hWeight : width,
-                    height: orientation == .v ? child.vWeight : height,
-                ),
-                context,
-            )
-            virtualPoint = orientation == .h ? virtualPoint.addingXOffset(child.hWeight) : virtualPoint.addingYOffset(child.vWeight)
-            point = orientation == .h ? point.addingXOffset(child.hWeight) : point.addingYOffset(child.vWeight)
+        let weights = children.map { $0.getWeight(orientation) }
+        let delta = ((orientation == .h ? width : height) - weights.reduce(0, +)).div(children.count) ?? 0
+        let displayedWeights = weights.map { $0 + delta }
+        if !retainsInvisibleShares {
+            for (child, weight) in zip(children, displayedWeights) { child.setLayoutWeight(orientation, weight) }
         }
+        return (displayedWeights, rawGap)
     }
 
     @MainActor
@@ -402,7 +439,7 @@ extension TilingContainer {
             {
                 let contentScale = availableContent / totalContentWeight
                 for index in children.indices {
-                    children[index].setWeight(
+                    children[index].setLayoutWeight(
                         orientation,
                         requiredGaps[index] + contentWeights[index] * contentScale,
                     )
@@ -411,7 +448,7 @@ extension TilingContainer {
             }
         }
         for (child, weight) in zip(children, proportionalWeights) {
-            child.setWeight(orientation, weight)
+            child.setLayoutWeight(orientation, weight)
         }
     }
 }

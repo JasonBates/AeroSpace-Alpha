@@ -10,6 +10,7 @@ final class TestWindow: Window, CustomStringConvertible {
     var isMacosMinimizedForTest = false
     var onGetAxSize: (@MainActor () -> Void)?
     var onGetAxRect: (@MainActor () -> Void)?
+    var onSetAxFrame: (@MainActor () -> Void)?
     var rejectAxFrameChangesForTest = false
     /// Like a real app, the window refuses to be made smaller than this
     var appMinimumSizeForTest: CGSize?
@@ -59,6 +60,9 @@ final class TestWindow: Window, CustomStringConvertible {
     }
 
     override func setAxFrame(_ topLeft: CGPoint?, _ size: CGSize?) {
+        let callback = onSetAxFrame
+        onSetAxFrame = nil
+        MainActor.assumeIsolated { callback?() }
         setAxFrameCallCountForTest += 1
         if rejectAxFrameChangesForTest { return }
         let current = _rect ?? Rect(topLeftX: 0, topLeftY: 0, width: 0, height: 0)

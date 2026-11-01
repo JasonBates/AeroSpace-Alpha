@@ -1,6 +1,5 @@
 import AppKit
 import Common
-import Common
 
 struct MoveMouseCommand: Command {
     let args: MoveMouseCmdArgs

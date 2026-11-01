@@ -7,6 +7,7 @@ open class TreeNode: Equatable, AeroAny {
     fileprivate final weak var _parent: NonLeafTreeNodeObject? = nil
     final var parent: NonLeafTreeNodeObject? { _parent }
     private var adaptiveWeight: CGFloat
+    private(set) var weightEditGeneration = 0
     let _mruChildren: MruStack<TreeNode> = MruStack()
     // Usages:
     // - resize with mouse
@@ -34,6 +35,16 @@ open class TreeNode: Equatable, AeroAny {
 
     /// See: ``getWeight(_:)``
     func setWeight(_ targetOrientation: Orientation, _ newValue: CGFloat) {
+        assignWeight(targetOrientation, newValue)
+        weightEditGeneration += 1
+    }
+
+    /// Layout projects logical splits into the available area without recording a user resize.
+    func setLayoutWeight(_ targetOrientation: Orientation, _ newValue: CGFloat) {
+        assignWeight(targetOrientation, newValue)
+    }
+
+    private func assignWeight(_ targetOrientation: Orientation, _ newValue: CGFloat) {
         guard let parent else { die("Can't change weight if TreeNode doesn't have parent") }
         switch getChildParentRelation(child: self, parent: parent) {
             case .tiling(let parent):

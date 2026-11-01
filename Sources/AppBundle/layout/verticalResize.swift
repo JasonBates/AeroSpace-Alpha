@@ -239,7 +239,7 @@ private func intendedVerticalAllocation(
         minimumWindowHeight: CGFloat(config.minimumWindowHeight),
     )
     let desired = desiredWeights.flatMap { $0.count == children.count ? $0 : nil }
-        ?? children.map { $0.getWeight(.v) }
+        ?? container.projectedWeights(children: children, dimension: height)
     let adjusted = adaptiveAdjustedVerticalWeights(
         container: container,
         children: children,
@@ -281,7 +281,7 @@ func enforceVerticalMinimums(
         gap: plan.gap,
     )
     for (child, rawHeight) in zip(children, allocated) {
-        child.setWeight(.v, rawHeight)
+        child.setLayoutWeight(.v, rawHeight)
     }
     return plan.gap
 }
@@ -478,9 +478,7 @@ func resizeTiledVertically(
         }
     }
     weights[targetIndex] = acceptedRawHeight
-    for (child, weight) in zip(children, weights) {
-        child.setWeight(.v, weight)
-    }
+    parent.setResizeWeights(children: children, weights: weights)
     return VerticalResizeResult(
         acceptedDelta: acceptedRawHeight - insets[targetIndex] - baselinePhysicalHeight,
     )

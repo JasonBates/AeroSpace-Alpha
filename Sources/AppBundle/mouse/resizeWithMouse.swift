@@ -60,6 +60,15 @@ private struct VerticalMouseResizeState {
     let baselineWeights: [CGFloat]
 }
 
+private struct LegacyHorizontalMouseResizeState {
+    let generation: Int
+    let workspace: ObjectIdentifier
+    let monitorId: Int
+    let available: Rect
+    let topology: [AdaptiveTopologyItem]
+    var edges: Set<Int>
+}
+
 private struct AdaptiveMouseResizePolicy {
     let enabled: Bool
     let oneColumnWidthPercent: Int
@@ -111,6 +120,9 @@ private var verticalMouseClampAttempt: VerticalMouseClampAttempt?
 private var verticalMouseResizeState: VerticalMouseResizeState?
 
 @MainActor
+private var legacyHorizontalMouseResizeState: LegacyHorizontalMouseResizeState?
+
+@MainActor
 private func adaptiveMouseResizePolicy(_ workspace: Workspace) -> AdaptiveMouseResizePolicy {
     let adaptive = config.adaptiveLayout
     return AdaptiveMouseResizePolicy(
@@ -156,6 +168,7 @@ func resetManipulatedWithMouseIfPossible() async throws {
     adaptiveMouseResizeInvalidatedWindowId = nil
     verticalMouseClampAttempt = nil
     verticalMouseResizeState = nil
+    legacyHorizontalMouseResizeState = nil
     for workspace in Workspace.all {
         workspace.resetResizeWeightBeforeResizeRecursive()
     }
@@ -188,6 +201,7 @@ func cancelResizeWithMouseGesture(for workspace: Workspace) {
     adaptiveMouseResizeState = nil
     verticalMouseClampAttempt = nil
     verticalMouseResizeState = nil
+    legacyHorizontalMouseResizeState = nil
     currentlyManipulatedWithMouseWindowId = nil
     // Refuse any already queued AX notification from the cancelled gesture. The
     // normal mouse-release cleanup clears this before a new gesture starts.
@@ -235,13 +249,23 @@ func resizeWithMouse(_ window: Window) async throws {
              .macosPopupWindowsContainer, .macosHiddenAppsWindowsContainer:
             return // Nothing to do for floating, or unconventional windows
         case .tilingContainer:
+            if let workspace = window.nodeWorkspace, FocusMode.shared.workspaceName == workspace.name {
+                cancelResizeWithMouseGesture(for: workspace)
+                // Focus Mode is a reversible view. Ignore native sizing and let layout restore its frame.
+                return
+            }
             guard var rect = try await window.getAxRect(.cancellable) else { return }
+            if let workspace = window.nodeWorkspace, FocusMode.shared.workspaceName == workspace.name {
+                cancelResizeWithMouseGesture(for: workspace)
+                return
+            }
             guard let lastAppliedLayoutRect = window.lastAppliedLayoutPhysicalRect else { return }
             let isFirstEvent = currentlyManipulatedWithMouseWindowId != window.windowId
             if isFirstEvent {
                 adaptiveMouseResizeState = nil
                 verticalMouseClampAttempt = nil
                 verticalMouseResizeState = nil
+                legacyHorizontalMouseResizeState = nil
                 if adaptiveMouseResizeInvalidatedWindowId != window.windowId {
                     adaptiveMouseResizeInvalidatedWindowId = nil
                 }
@@ -408,8 +432,35 @@ func resizeWithMouse(_ window: Window) async throws {
                 (lastAppliedLayoutRect.minX - rect.minX, lParent, 0, lOwnIndex),
                 (rect.maxX - lastAppliedLayoutRect.maxX, rParent, rOwnIndex.map { $0 + 1 }, rParent?.children.count),
             ]
-            for (diff, parent, startIndex, untilIndex) in horizontalTable {
-                if let parent, let startIndex, let untilIndex, untilIndex - startIndex > 0 && abs(diff) > 5 { // 5 pixels should be enough to fight with accumulated floating precision error
+            if let state = legacyHorizontalMouseResizeState {
+                guard state.generation == window.nativeGeometryGeneration,
+                      state.workspace == ObjectIdentifier(workspace),
+                      state.monitorId == workspace.workspaceMonitorInfo.monitorAppKitNsScreenScreensId,
+                      state.available == workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps,
+                      adaptiveTopologyMatches(state.topology, adaptiveTopologySignature(workspace.rootTilingContainer))
+                else {
+                    legacyHorizontalMouseResizeState = nil
+                    adaptiveMouseResizeInvalidatedWindowId = window.windowId
+                    currentlyManipulatedWithMouseWindowId = window.windowId
+                    return
+                }
+            }
+            for (edge, (diff, parent, startIndex, untilIndex)) in horizontalTable.enumerated() {
+                // Keep the initial noise threshold, but replay an established edge all the way back to zero.
+                if let parent, let startIndex, let untilIndex, untilIndex - startIndex > 0,
+                   abs(diff) > 5 || legacyHorizontalMouseResizeState?.edges.contains(edge) == true
+                {
+                    if legacyHorizontalMouseResizeState == nil {
+                        legacyHorizontalMouseResizeState = LegacyHorizontalMouseResizeState(
+                            generation: window.nativeGeometryGeneration,
+                            workspace: ObjectIdentifier(workspace),
+                            monitorId: workspace.workspaceMonitorInfo.monitorAppKitNsScreenScreensId,
+                            available: workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps,
+                            topology: adaptiveTopologySignature(workspace.rootTilingContainer),
+                            edges: [],
+                        )
+                    }
+                    legacyHorizontalMouseResizeState?.edges.insert(edge)
                     let orientation = parent.orientation
 
                     window.parentsWithSelf.lazy
@@ -418,12 +469,18 @@ func resizeWithMouse(_ window: Window) async throws {
                             let parent = $0.parent as? TilingContainer
                             return parent?.orientation == orientation && parent?.layout == .tiles
                         }
-                        .forEach { $0.setWeight(orientation, $0.getWeightBeforeResize(orientation) + diff) }
+                        .forEach { node in
+                            let container = node.parent as! TilingContainer
+                            let children = tiledParticipatingChildren(container)
+                            let scale = container.retainedMouseResizeScale(children: children)
+                            node.setWeight(orientation, node.getWeightBeforeResize(orientation) + diff * scale)
+                        }
                     let inhabitedSiblings = (parent.children.slice(startIndex ..< untilIndex) ?? [])
                         .filter { $0.tilingTreeNodeCasesOrDie().isInhabited }
                     guard let siblingDiff = diff.div(inhabitedSiblings.count) else { return }
+                    let scale = parent.retainedMouseResizeScale(children: tiledParticipatingChildren(parent))
                     for sibling in inhabitedSiblings {
-                        sibling.setWeight(orientation, sibling.getWeightBeforeResize(orientation) - siblingDiff)
+                        sibling.setWeight(orientation, sibling.getWeightBeforeResize(orientation) - siblingDiff * scale)
                     }
                 }
             }
@@ -562,8 +619,10 @@ extension TreeNode {
     @MainActor
     fileprivate func getWeightBeforeResize(_ orientation: Orientation) -> CGFloat {
         let currentWeight = getWeight(orientation) // Check assertions
+        let retainsInvisibleShares = orientation == .h &&
+            ((parent as? TilingContainer).map { tiledParticipatingChildren($0).count != $0.children.count } ?? false)
         return getUserData(key: adaptiveWeightBeforeResizeWithMouseKey)
-            ?? (lastAppliedLayoutVirtualRect?.getDimension(orientation) ?? currentWeight)
+            ?? (retainsInvisibleShares ? currentWeight : lastAppliedLayoutVirtualRect?.getDimension(orientation) ?? currentWeight)
             .also { putUserData(key: adaptiveWeightBeforeResizeWithMouseKey, data: $0) }
     }
 
@@ -572,5 +631,13 @@ extension TreeNode {
         for child in children {
             child.resetResizeWeightBeforeResizeRecursive()
         }
+    }
+}
+
+extension TilingContainer {
+    @MainActor
+    fileprivate func retainedMouseResizeScale(children: [TreeNode]) -> CGFloat {
+        guard children.count != self.children.count, let width = lastAppliedLayoutPhysicalRect?.width, width > 0 else { return 1 }
+        return children.reduce(CGFloat.zero) { $0 + $1.getWeightBeforeResize(orientation) } / width
     }
 }

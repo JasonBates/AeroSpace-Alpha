@@ -44,6 +44,26 @@ struct AdaptiveLayoutProportionCache: Equatable {
 extension TilingContainer {
     var isRootContainer: Bool { parent is Workspace }
 
+    /// Invisible placeholders retain their logical share while visible children fill the display.
+    @MainActor
+    func projectedWeights(children: [TreeNode], dimension: CGFloat) -> [CGFloat] {
+        let weights = children.map { $0.getWeight(orientation) }
+        let total = weights.reduce(0, +)
+        guard children.count != self.children.count, total > 0 else { return weights }
+        return weights.map { $0 * dimension / total }
+    }
+
+    /// Store intentional visible resizing in the retained pool, leaving invisible siblings untouched.
+    @MainActor
+    func setResizeWeights(children: [TreeNode], weights: [CGFloat]) {
+        let retainedTotal = children.reduce(CGFloat.zero) { $0 + $1.getWeight(orientation) }
+        let displayedTotal = weights.reduce(0, +)
+        let scale = children.count != self.children.count && displayedTotal > 0 ? retainedTotal / displayedTotal : 1
+        for (child, weight) in zip(children, weights) {
+            child.setWeight(orientation, weight * scale)
+        }
+    }
+
     @MainActor
     func changeOrientation(_ targetOrientation: Orientation) {
         if orientation == targetOrientation {

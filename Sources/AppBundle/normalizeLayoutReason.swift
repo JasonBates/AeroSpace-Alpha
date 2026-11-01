@@ -11,6 +11,8 @@ private struct FlattenedParentRestorePoint {
     let layout: Layout?
     let orientation: Orientation?
     let outerChildWeights: [CGFloat]?
+    let outerChildWeightEdits: [Int]
+    let proportionCache: AdaptiveLayoutProportionCache?
 
     @MainActor
     init?(parent: NonLeafTreeNodeObject) {
@@ -26,6 +28,8 @@ private struct FlattenedParentRestorePoint {
             index: index,
         )
         self.outerChildren = outerParent.children
+        self.outerChildWeightEdits = outerParent.children.map(\.weightEditGeneration)
+        self.proportionCache = outerTilingParent?.adaptiveLayoutProportionCache
         self.layout = outerTilingParent?.layout
         self.orientation = outerTilingParent?.orientation
         if let outerTilingParent, outerTilingParent.layout == .tiles {
@@ -40,6 +44,7 @@ private struct FlattenedParentRestorePoint {
         parent: NonLeafTreeNodeObject,
         remainingChildren: [TreeNode],
         remainingChildWeights: [CGFloat],
+        remainingChildWeightEdits: [Int],
         workspace: Workspace,
     ) -> Bool {
         let outerParent = outerBinding.parent
@@ -64,13 +69,12 @@ private struct FlattenedParentRestorePoint {
               zip(outerParent.children, expectedChildren).allSatisfy({ $0 === $1 })
         else { return false }
 
-        if let outerChildWeights, let orientation {
-            let expectedWeights = zip(outerChildren, outerChildWeights).flatMap { child, weight in
-                child === parent ? [outerBinding.adaptiveWeight] : [weight]
+        if outerChildWeights != nil {
+            let expectedEdits = zip(outerChildren, outerChildWeightEdits).flatMap { child, generation in
+                child === parent ? remainingChildWeightEdits : [generation]
             }
-            let firstDelta = outerParent.children[0].getWeight(orientation) - expectedWeights[0]
-            guard zip(outerParent.children, expectedWeights).allSatisfy({ child, expectedWeight in
-                abs(child.getWeight(orientation) - expectedWeight - firstDelta) < 0.001
+            guard zip(outerParent.children, expectedEdits).allSatisfy({ child, generation in
+                child.weightEditGeneration == generation
             }) else { return false }
         }
 
@@ -78,9 +82,10 @@ private struct FlattenedParentRestorePoint {
         remainingChildren[0].bind(to: parent, adaptiveWeight: remainingChildWeights[0], index: 0)
         if let outerChildWeights, let orientation {
             for (child, weight) in zip(outerChildren, outerChildWeights) {
-                child.setWeight(orientation, weight)
+                child.setLayoutWeight(orientation, weight)
             }
         }
+        (outerParent as? TilingContainer)?.adaptiveLayoutProportionCache = proportionCache
         return true
     }
 }
@@ -96,6 +101,8 @@ private struct AbsorbedRootChildRestorePoint {
     let rootOrientation: Orientation
     let absorbedLayout: Layout
     let absorbedOrientation: Orientation
+    let childWeightEdits: [Int]
+    let childProportionCache: AdaptiveLayoutProportionCache?
 
     @MainActor
     init?(parent: NonLeafTreeNodeObject) {
@@ -103,6 +110,8 @@ private struct AbsorbedRootChildRestorePoint {
               let child = root.children.singleOrNil() as? TilingContainer else { return nil }
         self.child = child
         self.children = child.children
+        self.childWeightEdits = child.children.map(\.weightEditGeneration)
+        self.childProportionCache = child.adaptiveLayoutProportionCache
         self.weights = child.children.map { $0.getWeight(child.orientation) }
         self.mruChildren = Array(child._mruChildren)
         self.rootLayout = root.layout
@@ -117,7 +126,8 @@ private struct AbsorbedRootChildRestorePoint {
               !child.isBound, child.children.isEmpty,
               root.layout == absorbedLayout, root.orientation == absorbedOrientation,
               root.children.count == children.count,
-              zip(root.children, children).allSatisfy({ $0 === $1 }) else { return false }
+              zip(root.children, children).allSatisfy({ $0 === $1 }),
+              zip(root.children, childWeightEdits).allSatisfy({ $0.weightEditGeneration == $1 }) else { return false }
         root.changeOrientation(rootOrientation)
         root.layout = rootLayout
         child.lifeStatus = .alive
@@ -126,6 +136,7 @@ private struct AbsorbedRootChildRestorePoint {
             item.bind(to: child, adaptiveWeight: weights[index], index: index)
         }
         for item in mruChildren.reversed() { item.markAsMostRecentChild() }
+        child.adaptiveLayoutProportionCache = childProportionCache
         return true
     }
 }
@@ -137,6 +148,8 @@ private struct MacosNativeFullscreenRestorePoint {
     let orientation: Orientation?
     let siblingWeights: [CGFloat]?
     let siblingAdaptiveWeights: [CGFloat]
+    let siblingWeightEdits: [Int]
+    let proportionCache: AdaptiveLayoutProportionCache?
     let flattenedParent: FlattenedParentRestorePoint?
     let absorbedRootChild: AbsorbedRootChildRestorePoint?
 
@@ -144,7 +157,9 @@ private struct MacosNativeFullscreenRestorePoint {
     init(binding: BindingData) {
         self.binding = binding
         self.siblings = binding.parent.children
+        self.siblingWeightEdits = binding.parent.children.map(\.weightEditGeneration)
         let tilingParent = binding.parent as? TilingContainer
+        self.proportionCache = tilingParent?.adaptiveLayoutProportionCache
         self.layout = tilingParent?.layout
         self.orientation = tilingParent?.orientation
         let siblingAdaptiveWeights = tilingParent.map { parent in
@@ -169,6 +184,7 @@ private struct MacosNativeFullscreenRestorePoint {
                 parent: parent,
                 remainingChildren: siblings,
                 remainingChildWeights: siblingAdaptiveWeights,
+                remainingChildWeightEdits: siblingWeightEdits,
                 workspace: workspace,
             ) == true else { return false }
         }
@@ -185,18 +201,18 @@ private struct MacosNativeFullscreenRestorePoint {
 
         if let tilingParent = parent as? TilingContainer {
             guard tilingParent.layout == layout, tilingParent.orientation == orientation else { return false }
-            if let siblingWeights, let firstSavedWeight = siblingWeights.first {
-                let firstDelta = tilingParent.children[0].getWeight(tilingParent.orientation) - firstSavedWeight
-                guard zip(tilingParent.children, siblingWeights).allSatisfy({ child, savedWeight in
-                    abs(child.getWeight(tilingParent.orientation) - savedWeight - firstDelta) < 0.001
+            if let siblingWeights {
+                guard zip(tilingParent.children, siblingWeightEdits).allSatisfy({ child, generation in
+                    child.weightEditGeneration == generation
                 }) else { return false }
                 for (child, savedWeight) in zip(tilingParent.children, siblingWeights) {
-                    child.setWeight(tilingParent.orientation, savedWeight)
+                    child.setLayoutWeight(tilingParent.orientation, savedWeight)
                 }
             }
         }
 
         window.bind(to: parent, adaptiveWeight: binding.adaptiveWeight, index: binding.index)
+        (parent as? TilingContainer)?.adaptiveLayoutProportionCache = proportionCache
         return true
     }
 }

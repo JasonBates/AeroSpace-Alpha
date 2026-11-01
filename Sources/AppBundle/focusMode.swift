@@ -11,10 +11,16 @@ final class FocusMode {
     private(set) var windowId: OpaqueWindowId?
     private var stayOnMonitor = false
     private var originalFloatingFrame: Rect?
+    private var originalFloatingGeneration: Int?
+    private var revision = 0
 
     var isActive: Bool { workspaceName != nil }
 
     func start(window: Window, workspace: Workspace, stayOnMonitor: Bool = false) async -> Bool {
+        revision += 1
+        let requestRevision = revision
+        let generation = window.nativeGeometryGeneration
+        let parent = window.parent
         let floatingFrame: Rect?
         if window.isFloating {
             guard let frame = try? await window.getAxRect(.nonCancellable) else { return false }
@@ -22,18 +28,24 @@ final class FocusMode {
         } else {
             floatingFrame = nil
         }
+        guard revision == requestRevision,
+              validFocusedWindow(window, workspace: workspace, parent: parent, generation: generation)
+        else { return false }
         self.stayOnMonitor = stayOnMonitor
         workspaceName = workspace.name
         windowId = window.windowId
         originalFloatingFrame = floatingFrame
+        originalFloatingGeneration = floatingFrame == nil ? nil : generation
         return true
     }
 
     func stop() {
+        revision += 1
         restoreFloatingWindow()
         workspaceName = nil
         windowId = nil
         originalFloatingFrame = nil
+        originalFloatingGeneration = nil
         stayOnMonitor = false
         FocusDimmer.shared.hide()
     }
@@ -48,25 +60,46 @@ final class FocusMode {
             stop()
             return
         }
+        if windowId == window.windowId, let originalFloatingGeneration,
+           originalFloatingGeneration != window.nativeGeometryGeneration
+        {
+            // A replacement native tab has its own geometry; end the override without restoring the old tab.
+            stop()
+            return
+        }
         if windowId != window.windowId {
+            let requestRevision = revision
+            let generation = window.nativeGeometryGeneration
+            let parent = window.parent
+            let workspace = globalFocus.workspace
             let floatingFrame: Rect?
             if window.isFloating {
                 guard let frame = try? await window.getAxRect(.nonCancellable) else {
-                    stop()
+                    if revision == requestRevision { stop() }
                     return
                 }
                 floatingFrame = frame
             } else {
                 floatingFrame = nil
             }
+            guard revision == requestRevision else { return }
+            guard validFocusedWindow(window, workspace: workspace, parent: parent, generation: generation),
+                  globalFocus.workspace.name == workspaceName
+            else {
+                stop()
+                return
+            }
             restoreFloatingWindow()
+            revision += 1
             windowId = window.windowId
             originalFloatingFrame = floatingFrame
+            originalFloatingGeneration = floatingFrame == nil ? nil : generation
         }
     }
 
     func frame(for window: Window, in workspace: Workspace) -> Rect? {
         guard window.lifeStatus == .alive, workspaceName == workspace.name, windowId == window.windowId else { return nil }
+        if let originalFloatingGeneration, originalFloatingGeneration != window.nativeGeometryGeneration { return nil }
         let geometry = baseGeometry(for: workspace)
         let width = window.singleWindowWidth(base: geometry.frame.width, available: geometry.available.width)
         let fullHeight = geometry.available.height - 1
@@ -152,10 +185,19 @@ final class FocusMode {
         guard let windowId,
               let originalFloatingFrame,
               let window = Window.get(byId: windowId),
+              window.nativeGeometryGeneration == originalFloatingGeneration,
+              window.lifeStatus == .alive,
               window.isFloating,
               window.nodeWorkspace?.name == workspaceName
         else { return }
         window.setAxFrame(originalFloatingFrame.topLeftCorner, originalFloatingFrame.size)
+    }
+
+    private func validFocusedWindow(_ window: Window, workspace: Workspace, parent: NonLeafTreeNodeObject?, generation: Int) -> Bool {
+        window.isBound && window.lifeStatus == .alive && window.nativeGeometryGeneration == generation &&
+            window.parent === parent && window.nodeWorkspace === workspace &&
+            globalFocus.workspace === workspace && globalFocus.windowOrNil === window &&
+            (window.isFloating || window.parent is TilingContainer)
     }
 }
 

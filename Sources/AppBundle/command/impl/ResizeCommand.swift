@@ -144,6 +144,23 @@ struct ResizeCommand: Command {
             }
         }
 
+        let visibleChildren = tiledParticipatingChildren(parent)
+        if visibleChildren.count != parent.children.count,
+           let index = visibleChildren.firstIndex(where: { $0 === node }),
+           let dimension = parent.lastAppliedLayoutPhysicalRect?.getDimension(orientation)
+        {
+            var weights = parent.projectedWeights(children: visibleChildren, dimension: dimension)
+            let diff: CGFloat = switch args.units.val {
+                case .set(let unit): CGFloat(unit) - weights[index]
+                case .add(let unit): CGFloat(unit)
+                case .subtract(let unit): -CGFloat(unit)
+            }
+            guard let siblingDiff = diff.div(visibleChildren.count - 1) else { return .fail }
+            for childIndex in weights.indices { weights[childIndex] += childIndex == index ? diff : -siblingDiff }
+            parent.setResizeWeights(children: visibleChildren, weights: weights)
+            return .succ
+        }
+
         let diff: CGFloat = switch args.units.val {
             case .set(let unit): CGFloat(unit) - node.getWeight(orientation)
             case .add(let unit): CGFloat(unit)
@@ -164,9 +181,14 @@ struct ResizeCommand: Command {
     /// `smart` sets or changes the longer side and `smart-opposite` the shorter one, keeping the aspect ratio.
     @MainActor
     private func resizeFloating(_ window: Window, _ workspace: Workspace, _ io: CmdIo) async -> BinaryExitCode {
+        let generation = window.nativeGeometryGeneration
+        let parent = window.parent
         guard let rect = try? await window.getAxRect(.nonCancellable), rect.width > 0, rect.height > 0 else {
             return .fail(io.err("Can't read the window's frame"))
         }
+        guard window.nativeGeometryGeneration == generation, window.lifeStatus == .alive,
+              window.isFloating, window.parent === parent, window.nodeWorkspace === workspace
+        else { return .fail(io.err("The window changed while reading its frame")) }
         let isWidthLonger = rect.width >= rect.height
         let axisIsWidth: Bool = switch args.dimension.val {
             case .width: true

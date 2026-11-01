@@ -86,7 +86,10 @@ proportions inside it survive area-only changes, monitor moves, and enabling or
 disabling the policy. The preservation cache includes the container's
 orientation, layout and participating child identities, and it scales the live
 weights rather than old copies; keyboard-resized and nested uneven splits
-therefore remain meaningful. A changed child set follows the normal topology
+therefore remain meaningful. Invisible windows retain their logical share while
+visible siblings reclaim the display area; resizing the visible siblings changes
+only their shared pool, so a later return preserves both that edit and the hidden
+window's share. A changed child set follows the normal topology
 adjustment unless that would collapse a positive tile after its inner gap, in
 which case the surviving positive weights are scaled proportionally.
 
@@ -215,8 +218,11 @@ Pressing it again returns to the existing tiled view. Keyboard focus commands
 can select another window in the same workspace. Clicking outside the focused
 window, switching workspaces, or disabling AeroSpace exits Focus Mode. It
 preserves the workspace tree and tile weights;
-for a floating window it also restores the original frame. AeroSpace full
-screen takes precedence and exits Focus Mode.
+for a floating window it also restores the original frame. A native window-tab
+replacement ends floating Focus Mode without copying the old tab's frame onto
+the replacement. Native mouse resizing is ignored while Focus Mode is active;
+its centred frame is restored by layout, and keyboard size adjustments remain
+available. AeroSpace full screen takes precedence and exits Focus Mode.
 
 
 ## App-specific border corners

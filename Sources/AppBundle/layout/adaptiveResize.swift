@@ -94,7 +94,7 @@ func adaptiveWeightSnapshot(_ root: TilingContainer) -> [AdaptiveWeightSnapshot]
 @MainActor
 func restoreAdaptiveWeightSnapshot(_ snapshot: [AdaptiveWeightSnapshot]) {
     for item in snapshot {
-        item.node.setWeight(.h, item.weight)
+        item.node.setLayoutWeight(.h, item.weight)
     }
 }
 
@@ -107,7 +107,8 @@ private func adaptiveContainerProportionsAreInitialized(
     return cache.adaptiveLayoutEnabled &&
         cache.orientation == container.orientation &&
         cache.layout == container.layout &&
-        cache.participatingChildren == children.map(ObjectIdentifier.init)
+        (cache.participatingChildren == children.map(ObjectIdentifier.init) ||
+            cache.participatingChildren == container.children.map(ObjectIdentifier.init))
 }
 
 private func adaptiveGapInset(index: Int, count: Int, gap: CGFloat) -> CGFloat {
@@ -380,7 +381,7 @@ func enforceAdaptiveHorizontalMinimums(
         total: width,
     )
     for (child, weight) in zip(children, result) {
-        child.setWeight(.h, weight)
+        child.setLayoutWeight(.h, weight)
     }
 }
 
@@ -407,7 +408,7 @@ func enforceObservedHorizontalMinimums(
     else { return }
     let result = adaptiveLowerBoundedAllocation(desired: projected, minimums: minimumRawWidths, total: width)
     for (child, weight) in zip(children, result) {
-        child.setWeight(.h, weight)
+        child.setLayoutWeight(.h, weight)
     }
 }
 
@@ -419,6 +420,9 @@ func adaptiveCurrentPhysicalWidth(
 ) -> CGFloat? {
     let children = adaptiveParticipatingChildren(parent)
     guard let index = children.firstIndex(where: { $0 === node }) else { return nil }
+    if children.count != parent.children.count {
+        return node.lastAppliedLayoutPhysicalRect?.width
+    }
     let intendedParentWidth = children.sumOfDouble { $0.getWeight(.h) }
     let configuredGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitorInfo).inner.horizontal)
     let gap = adaptiveEffectiveHorizontalGap(
@@ -515,6 +519,10 @@ func resizeAdaptiveHorizontally(
     guard children.count > 1,
           let targetIndex = children.firstIndex(where: { $0 === node })
     else { return nil }
+    let baselineWeights = parent.projectedWeights(
+        children: children,
+        dimension: parent.lastAppliedLayoutPhysicalRect?.width ?? children.reduce(0) { $0 + $1.getWeight(.h) },
+    )
 
     let available = workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps
     let configuredGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitorInfo).inner.horizontal)
@@ -620,7 +628,7 @@ func resizeAdaptiveHorizontally(
             return Plan(
                 workspaceWidth: workspaceWidth,
                 rawWeights: adaptiveRawAllocation(
-                    desiredRawWidths: children.map { $0.getWeight(.h) },
+                    desiredRawWidths: baselineWeights,
                     minimumPhysicalWidths: minimums,
                     gapInsets: insets,
                     total: parentWidth,
@@ -630,7 +638,7 @@ func resizeAdaptiveHorizontally(
             )
         }
 
-        var rawWeights = children.map { $0.getWeight(.h) }
+        var rawWeights = baselineWeights
         rawWeights[targetIndex] = targetRawWidth
         let siblingWeights = adaptiveEqualRedistribution(
             current: siblingIndices.map { rawWeights[$0] },
@@ -743,9 +751,7 @@ func resizeAdaptiveHorizontally(
         break
     }
     guard let finalPlan else { return nil }
-    for (child, weight) in zip(children, finalPlan.rawWeights) {
-        child.setWeight(.h, weight)
-    }
+    parent.setResizeWeights(children: children, weights: finalPlan.rawWeights)
     return AdaptiveHorizontalResizeResult(
         acceptedPhysicalWidth: max(1, finalPlan.rawWeights[targetIndex] - finalPlan.targetGapInset),
     )

@@ -81,9 +81,11 @@ avoid treating monitor clamping as a reversible floating resize.
 Recorded counts are 187, 188 and 188 for these three seeds (563 shuffled
 checkpoints). The twelve expanded tests total 784 checkpoints; combined with the
 original 1,018, the **24 new tests execute 1,802 invariant checkpoints**. These
-totals come from runner output, not estimated loop counts. The full suite has
-630 tests: the existing 606 pass; nineteen new tests pass and five fail with 83
-assertion failures before source repair.
+totals come from runner output, not estimated loop counts. The regression checkpoint had 630 tests: the existing 606 passed; nineteen new
+tests passed and five failed with 83 assertion failures before source repair.
+The original 1,802 checkpoints remain the pre-repair comparison count. Safe
+cancellation of the stale Focus Mode start removes its conditional exit command,
+so the repaired simulations execute 1,801 checkpoints with the same assertions.
 
 ```sh
 PATH=/opt/homebrew/bin:$PATH \
@@ -127,6 +129,35 @@ Minimum-size confirmation already rejects late replies correctly. The seeded
 workdays pass: their invariants detect structural/identity/geometry corruption,
 while the targeted regressions additionally assert exact restoration semantics.
 
+## Source repair semantics
+
+Fullscreen restore now distinguishes automatic layout weight changes from explicit
+resize and balance edits. It retains the original order, identity, layout and
+workspace guards, and restores the matching adaptive proportion cache with the
+saved structure. Deliberate edits, moved neighbours and closed neighbours use the
+existing safe fallback rather than overwriting the new layout.
+
+A container with invisible placeholders computes a temporary visible allocation
+synchronously and restores retained logical shares before recursive layout can
+await or call a child. Visible siblings reclaim the display area without absorbing
+the invisible share. Keyboard and mouse resizing redistribute the retained visible
+pool only, so a deliberate visible split edit survives later hide/show cycles.
+The all-visible allocation retains its existing behavior.
+
+Floating resize cancels with a failure if its AX frame read spans a native remap,
+parent/workspace change or loss of liveness. Focus Mode setup and focus sync also
+validate native generation, binding, liveness, focused window, workspace and the
+current mode request after their frame reads. A saved floating restore frame is
+valid only for the native generation that supplied it. If that floating window
+remaps while Focus Mode is active, focus sync ends the mode without applying the
+old restore frame; subsequent layout uses the replacement's own frame.
+
+Native mouse resize while Focus Mode is active is ignored and normal view layout
+restores the Focus Mode frame. Existing keyboard width/height adjustments remain
+supported. The legacy mouse path also replays an established edge back to its
+baseline while retaining the initial noise threshold; its stored baseline expires
+on native, topology or monitor changes and on release.
+
 ## Automated checks
 
 Toolchain: pinned Swift 6.4.2, Xcode developer directory, at most four build jobs.
@@ -138,13 +169,22 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 swiftly run swift test --jobs 4
 ```
 
-Targeted SwiftFormat is run only on the five changed test files. No generator
-or whole-repository formatter is required for this test/documentation addition.
-The parent owns the final clean-tree `./test.sh`, implementation repair and
-release/package validation. Exact run results are recorded in the work-order
-report; this page must not be treated as a clean acceptance until the five
-regressions pass. The broader final results supersede the initial twelve-test
-run described above.
+The source repair adds `LifecycleRepairTest.swift`, with thirteen focused tests
+covering adaptive and normal layout, nested invisible shares, physical keyboard
+and mouse resize round trips, synchronous projection restoration before a child
+frame callback, fullscreen user-edit fallback, delayed floating reads, Focus Mode
+native-generation expiry, and gesture invalidation. The existing fullscreen
+fixture now identifies its simulated automatic normalization writes explicitly;
+its original restoration assertions are unchanged.
+
+The repaired full run passes **643 XCTest tests with zero failures**: all 630
+regression-checkpoint tests plus thirteen focused repair tests. The 24 original
+simulation tests retain all their assertions and now pass; the six seeds and 600
+mixed action rounds are unchanged.
+
+The parent owns independent clean-tree `./test.sh`, release/package validation
+and any live trial. Exact commands and results are recorded in
+`.claude/work-orders/runs/lifecycle-repair-report.md`.
 
 The parent added a source safety guard in `MoveMouseCommand` so unit-test mode
 returns before constructing or posting a CGEvent. The final run rebuilds after
