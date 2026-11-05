@@ -21,9 +21,13 @@
 
 <br>
 
-## Alpha v0.8
+## Alpha v1.0
 
-This release moves Alpha onto upstream `main` through
+v1.0 is [v0.8](docs/releases/0.8.md) renumbered so that SwipeAeroSpace chooses the
+right socket protocol; the code is unchanged. See the
+[v1.0 release notes](docs/releases/1.0.md).
+
+v0.8 moved Alpha onto upstream `main` through
 [`c960a8ac`](https://github.com/nikitabobko/AeroSpace/commit/c960a8ac). It keeps
 Alpha's adaptive layouts, Focus Mode, monitor recovery, private-API focus fix,
 floating-window controls and border while adopting upstream's new window
