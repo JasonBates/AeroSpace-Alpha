@@ -9,7 +9,7 @@ include::util/man-attributes.adoc[]
 == Synopsis
 [verse]
 // tag::synopsis[]
-aerospace resize [-h|--help] [--window-id <window-id>] (smart|smart-opposite|width|height) [+|-]<number>
+aerospace resize [-h|--help] [--window-id <window-id>] [--independent] (smart|smart-opposite|width|height) [+|-]<number>
 
 // end::synopsis[]
 
@@ -49,6 +49,13 @@ include::./util/conditional-options-header.adoc[]
 
 --window-id <window-id>::
 include::./util/window-id-flag-desc.adoc[]
+
+--independent::
+Change the width without taking it from, or giving it to, the neighbouring windows.
+The layout as a whole becomes wider or narrower instead and stays centred.
+This needs `adaptive-layout`, a layout that has free space beside it, and a target that is a top-level column.
+When growing has no free space left to use, and in every other case, the flag changes nothing and the neighbours give or take the width as usual.
+The layout keeps its new width until its number of columns changes or `balance-sizes` runs.
 
 // end::body[]
 

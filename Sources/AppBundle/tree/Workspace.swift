@@ -6,6 +6,8 @@ import Common
 final class Workspace: TreeNode, NonLeafTreeNodeObject, Hashable, Comparable {
     let name: String
     nonisolated private let nameLogicalSegments: StringLogicalSegments
+    // Width `resize --independent` added to or took from the adaptive layout. See AdaptiveWidthAdjustment
+    var adaptiveWidthAdjustment: AdaptiveWidthAdjustment?
 
     @MainActor private init(_ name: String) {
         self.name = name

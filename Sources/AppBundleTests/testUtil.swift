@@ -45,6 +45,7 @@ func setUpWorkspacesForTests() {
     config.persistentWorkspaces = []
 
     for workspace in Workspace.all {
+        workspace.adaptiveWidthAdjustment = nil
         for child in workspace.children {
             child.unbindFromParent()
         }

@@ -10,6 +10,7 @@ struct BalanceSizesCommand: Command {
         guard let target = args.resolveTargetOrReportError(env, io) else { return .fail }
         cancelResizeWithMouseGesture(for: target.workspace)
         balance(target.workspace.rootTilingContainer)
+        target.workspace.adaptiveWidthAdjustment = nil
         let workspaceWindows = target.workspace.rootTilingContainer.allLeafWindowsRecursive + target.workspace.floatingWindows
         for window in workspaceWindows {
             window.singleWindowWidthAdjustment = 0

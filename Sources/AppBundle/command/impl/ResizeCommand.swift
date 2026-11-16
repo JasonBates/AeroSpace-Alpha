@@ -134,6 +134,16 @@ struct ResizeCommand: Command {
                 case .add(let unit): currentWidth + CGFloat(unit)
                 case .subtract(let unit): currentWidth - CGFloat(unit)
             }
+            if args.independent,
+               resizeAdaptiveHorizontallyIndependently(
+                   node: node,
+                   parent: parent,
+                   requestedPhysicalWidth: requestedWidth,
+                   workspace: workspace,
+               ) != nil
+            {
+                return .succ
+            }
             if resizeAdaptiveHorizontally(
                 node: node,
                 parent: parent,

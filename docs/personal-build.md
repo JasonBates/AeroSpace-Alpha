@@ -57,6 +57,15 @@ Making an uneven pair more balanced can also reduce its overall width while
 honouring the requested change; another row that still needs the extra width
 keeps the workspace expanded.
 
+`resize --independent width +100` (and `-100`) changes one top-level column and
+leaves its neighbours at their widths: the centred workspace as a whole grows
+or shrinks by the same amount, and keeps that width until the number of columns
+changes or `balance-sizes` runs. Shrinking can take the workspace below its
+normal width. Once growing has brought the workspace to the usable display
+width, the flag has no free space left to use and the command takes space from
+the neighbours as it does without the flag. The same holds without adaptive
+layout and for a column inside a nested row.
+
 The minimum is applied recursively: horizontal children add their content
 minimums and inner gaps, while vertical children use the widest requirement.
 An accordion acts as one overlapping group and includes its horizontal reveal
@@ -122,7 +131,7 @@ positive frames that remain inside the container.
 
 The starter binding `alt-0 = 'balance-sizes'` restores equal tiled splits on
 the target workspace (since upstream `80092f3` every tile gets the average of
-the existing weights, so a following `resize` behaves as if run alone). It also clears a lone window's width adjustment, Focus
+the existing weights, so a following `resize` behaves as if run alone). It also clears a lone window's width adjustment, a `resize --independent` workspace width, Focus
 Mode width and height adjustments, and learned app minimum sizes, and cancels an active resize gesture so a
 queued mouse event cannot restore stale weights. Floating window frames are not
 changed.
