@@ -537,11 +537,15 @@ func resizeAdaptiveHorizontally(
     )
     var targetWidth = max(targetMinimum, requestedPhysicalWidth)
     guard let footprint = workspace.rootTilingContainer.tilingFootprint else { return nil }
-    let normalWidth = adaptiveWorkspaceRect(
-        available: available,
+    let normalWidth = workspace.adaptiveAdjustedNormalWidth(
+        normalWidth: adaptiveWorkspaceRect(
+            available: available,
+            footprint: footprint,
+            config: config.adaptiveLayout,
+        ).width,
+        availableWidth: available.width,
         footprint: footprint,
-        config: config.adaptiveLayout,
-    ).width
+    )
     let workspaceLimit = max(1, min(available.width, maximumWorkspaceWidth ?? available.width))
 
     func requiredWidth(for candidate: CGFloat) -> CGFloat {
@@ -755,6 +759,62 @@ func resizeAdaptiveHorizontally(
     return AdaptiveHorizontalResizeResult(
         acceptedPhysicalWidth: max(1, finalPlan.rawWeights[targetIndex] - finalPlan.targetGapInset),
     )
+}
+
+/// `resize --independent`: changes the width of `node` and lets the whole layout grow or shrink by
+/// the same amount, so the siblings keep their widths. The layout stays centred, and keeps its new
+/// width until the number of columns changes or `balance-sizes` runs.
+///
+/// Returns nil when the siblings can't be left alone: the layout already reaches both edges of the
+/// monitor, or `parent` isn't the root container (a nested row shares its width with the other rows).
+/// The caller then resizes the usual way.
+@MainActor
+@discardableResult
+func resizeAdaptiveHorizontallyIndependently(
+    node: TreeNode,
+    parent: TilingContainer,
+    requestedPhysicalWidth: CGFloat,
+    workspace: Workspace,
+) -> AdaptiveHorizontalResizeResult? {
+    guard parent === workspace.rootTilingContainer, parent.layout == .tiles, parent.orientation == .h else { return nil }
+    guard adaptiveProportionsAreInitialized(parent) else { return nil }
+    let children = adaptiveParticipatingChildren(parent)
+    guard children.count > 1,
+          let footprint = parent.tilingFootprint,
+          let currentWidth = adaptiveCurrentPhysicalWidth(of: node, in: parent, workspace: workspace)
+    else { return nil }
+
+    let available = workspace.workspaceMonitorInfo.visibleRectPaddedByOuterGaps
+    let configuredGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspace.workspaceMonitorInfo).inner.horizontal)
+    let targetMinimum = adaptiveMinimumPhysicalWidth(
+        node,
+        minimumWindowWidth: adaptiveMinimumWindowPhysicalWidth(
+            availableWidth: available.width,
+            config: config.adaptiveLayout,
+        ),
+        horizontalGap: configuredGap,
+    )
+    // The weights are the intended raw widths, so their sum is the layout's width even before the next layout pass
+    let currentWorkspaceWidth = CGFloat(children.sumOfDouble { $0.getWeight(.h) })
+    let requestedDiff = max(targetMinimum, requestedPhysicalWidth) - currentWidth
+    let newWorkspaceWidth = min(available.width, currentWorkspaceWidth + requestedDiff)
+    let diff = newWorkspaceWidth - currentWorkspaceWidth
+    if requestedDiff > 0, diff <= adaptiveGeometryEpsilon { return nil }
+    guard abs(diff) > adaptiveGeometryEpsilon else {
+        return AdaptiveHorizontalResizeResult(acceptedPhysicalWidth: currentWidth)
+    }
+
+    node.setWeight(.h, node.getWeight(.h) + diff)
+    let normalWidth = adaptiveWorkspaceRect(
+        available: available,
+        footprint: footprint,
+        config: config.adaptiveLayout,
+    ).width
+    workspace.adaptiveWidthAdjustment = AdaptiveWidthAdjustment(
+        columns: footprint.columns,
+        delta: newWorkspaceWidth - normalWidth,
+    )
+    return AdaptiveHorizontalResizeResult(acceptedPhysicalWidth: currentWidth + diff)
 }
 
 @MainActor

@@ -4,7 +4,10 @@ import Common
 extension Workspace {
     @MainActor
     func layoutWorkspace() async throws { // todo revisit API
-        if isEffectivelyEmpty { return }
+        if isEffectivelyEmpty {
+            adaptiveWidthAdjustment = nil
+            return
+        }
         let rect = workspaceMonitorInfo.visibleRectPaddedByOuterGaps
         // If monitors are aligned vertically and the monitor below has smaller width, then macOS may not allow the
         // window on the upper monitor to take full width. rect.height - 1 resolves this problem
@@ -15,8 +18,15 @@ extension Workspace {
             if let footprint = rootTilingContainer.tilingFootprint {
                 layoutRect = adaptiveWorkspaceRect(available: rect, footprint: footprint, config: config.adaptiveLayout)
                 let horizontalGap = CGFloat(ResolvedGaps(gaps: config.gaps, monitor: workspaceMonitorInfo).inner.horizontal)
+                if adaptiveWidthAdjustment?.columns != footprint.columns {
+                    adaptiveWidthAdjustment = nil
+                }
                 let expandedWidth = adaptiveExpandedWorkspaceWidth(
-                    normalWidth: layoutRect.width,
+                    normalWidth: adaptiveAdjustedNormalWidth(
+                        normalWidth: layoutRect.width,
+                        availableWidth: rect.width,
+                        footprint: footprint,
+                    ),
                     availableWidth: rect.width,
                     root: rootTilingContainer,
                     config: config.adaptiveLayout,

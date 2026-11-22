@@ -61,3 +61,21 @@ func adaptiveWorkspaceRect(
         height: height,
     )
 }
+
+/// `resize --independent` widens or narrows one column and leaves its siblings alone, so the layout
+/// as a whole ends up wider or narrower than `adaptiveWorkspaceRect` makes it. The difference is kept
+/// here. It belongs to the column count it was made for: a layout with more or fewer columns starts
+/// from its normal width again.
+struct AdaptiveWidthAdjustment: Equatable {
+    let columns: Int
+    let delta: CGFloat
+}
+
+extension Workspace {
+    /// The width of `adaptiveWorkspaceRect`, changed by this workspace's `adaptiveWidthAdjustment`
+    @MainActor
+    func adaptiveAdjustedNormalWidth(normalWidth: CGFloat, availableWidth: CGFloat, footprint: TilingFootprint) -> CGFloat {
+        guard let adjustment = adaptiveWidthAdjustment, adjustment.columns == footprint.columns else { return normalWidth }
+        return min(availableWidth, max(min(1, availableWidth), normalWidth + adjustment.delta))
+    }
+}

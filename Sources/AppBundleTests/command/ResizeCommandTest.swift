@@ -17,6 +17,9 @@ final class ResizeCommandTest: XCTestCase {
 
         testParseSingleCommandSucc("resize height 10", ResizeCmdArgs(rawArgs: [], dimension: .height, units: .set(10)))
         testParseSingleCommandSucc("resize width 10", ResizeCmdArgs(rawArgs: [], dimension: .width, units: .set(10)))
+        var independent = ResizeCmdArgs(rawArgs: [], dimension: .width, units: .add(10))
+        independent.independent = true
+        testParseSingleCommandSucc("resize --independent width +10", independent)
 
         testParseCommandFail("resize s 10", msg: """
             ERROR: Can't parse 's'.

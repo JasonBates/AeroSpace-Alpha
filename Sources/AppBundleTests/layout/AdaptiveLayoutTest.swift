@@ -446,6 +446,131 @@ final class AdaptiveLayoutTest: XCTestCase {
         assertRect(try await second.getAxRect(.nonCancellable), x: 1539.84, y: 54, width: 380.16, height: 971)
     }
 
+    func testIndependentResizeChangesTheWorkspaceAndLeavesTheSiblingAlone() async throws {
+        let workspace = globalFocus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        let second = TestWindow.new(id: 2, parent: root)
+        assertTrue(first.focusWindow())
+        try await workspace.layoutWorkspace()
+
+        _ = await parseCommand("resize --independent width +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 276.4, y: 54, width: 1367.2, height: 972)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 276.4, y: 54, width: 733.6, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 1010, y: 54, width: 633.6, height: 971)
+        let weights = root.children.map(\.hWeight)
+        try await workspace.layoutWorkspace()
+        assertEquals(root.children.map(\.hWeight), weights)
+
+        // Chained commands add up before the next layout, and can take the workspace below its normal width
+        _ = await parseCommand("resize --independent width -100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        _ = await parseCommand("resize --independent width -100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 376.4, y: 54, width: 1167.2, height: 972)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 376.4, y: 54, width: 533.6, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 910, y: 54, width: 633.6, height: 971)
+
+        // The target stops at its minimum and the sibling still doesn't move
+        _ = await parseCommand("resize --independent width -99999").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertRect(try await first.getAxRect(.nonCancellable), x: 453.12, y: 54, width: 380.16, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 833.28, y: 54, width: 633.6, height: 971)
+
+        // A plain resize afterwards trades width inside the adjusted workspace
+        _ = await parseCommand("resize width +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 453.12, y: 54, width: 1013.76, height: 972)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 453.12, y: 54, width: 480.16, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 933.28, y: 54, width: 533.6, height: 971)
+    }
+
+    func testIndependentResizeFallsBackToPlainResizeAtTheScreenEdge() async throws {
+        let workspace = globalFocus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        let second = TestWindow.new(id: 2, parent: root)
+        assertTrue(first.focusWindow())
+        try await workspace.layoutWorkspace()
+
+        _ = await parseCommand("resize --independent width +99999").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 0, y: 54, width: 1920, height: 972)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 0, y: 54, width: 1286.4, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 1286.4, y: 54, width: 633.6, height: 971)
+
+        _ = await parseCommand("resize --independent width +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 0, y: 54, width: 1920, height: 972)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 0, y: 54, width: 1386.4, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 1386.4, y: 54, width: 533.6, height: 971)
+    }
+
+    func testIndependentResizeWidthIsDroppedByBalanceSizesAndByAColumnCountChange() async throws {
+        let workspace = globalFocus.workspace
+        let root = workspace.rootTilingContainer
+        let first = TestWindow.new(id: 1, parent: root)
+        let second = TestWindow.new(id: 2, parent: root)
+        assertTrue(first.focusWindow())
+        try await workspace.layoutWorkspace()
+
+        _ = await parseCommand("resize --independent width +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        _ = await parseCommand("balance-sizes").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 326.4, y: 54, width: 1267.2, height: 972)
+        assertRect(try await first.getAxRect(.nonCancellable), x: 326.4, y: 54, width: 633.6, height: 971)
+        assertRect(try await second.getAxRect(.nonCancellable), x: 960, y: 54, width: 633.6, height: 971)
+
+        _ = await parseCommand("resize --independent width -100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 376.4, y: 54, width: 1167.2, height: 972)
+        let third = TestWindow.new(id: 3, parent: root, adaptiveWeight: WEIGHT_AUTO)
+        try await workspace.layoutWorkspace()
+        XCTAssertNil(workspace.adaptiveWidthAdjustment)
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 0, y: 54, width: 1920, height: 972)
+        third.unbindFromParent()
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 326.4, y: 54, width: 1267.2, height: 972)
+
+        // Three columns fill the monitor, and shrinking one opens space instead of widening the others
+        third.bind(to: root, adaptiveWeight: WEIGHT_AUTO, index: INDEX_BIND_LAST)
+        try await workspace.layoutWorkspace()
+        let secondWidth = try await second.getAxRect(.nonCancellable)?.width
+        _ = await parseCommand("resize --independent width -100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        assertRect(workspace.lastAppliedLayoutVirtualRect, x: 50, y: 54, width: 1820, height: 972)
+        assertEquals(try await second.getAxRect(.nonCancellable)?.width, secondWidth)
+    }
+
+    func testIndependentResizeOfANestedRowOrWithoutAdaptiveLayoutIsAPlainResize() async throws {
+        let workspace = globalFocus.workspace
+        let root = workspace.rootTilingContainer
+        root.changeOrientation(.v)
+        let row = TilingContainer.newHTiles(parent: root, adaptiveWeight: 1, index: 0)
+        let first = TestWindow.new(id: 1, parent: row)
+        let second = TestWindow.new(id: 2, parent: row)
+        TestWindow.new(id: 3, parent: root)
+        assertTrue(first.focusWindow())
+        try await workspace.layoutWorkspace()
+        let width = workspace.lastAppliedLayoutVirtualRect?.width
+
+        _ = await parseCommand("resize --independent width +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        XCTAssertNil(workspace.adaptiveWidthAdjustment)
+        assertEquals(workspace.lastAppliedLayoutVirtualRect?.width, width)
+        assertEquals(try await first.getAxRect(.nonCancellable)?.width, 733.6)
+        assertEquals(try await second.getAxRect(.nonCancellable)?.width, 533.6)
+
+        config.adaptiveLayout.enabled = .constant(false)
+        try await workspace.layoutWorkspace()
+        let before = try await first.getAxRect(.nonCancellable)?.width ?? 0
+        _ = await parseCommand("resize --independent width +100").cmdOrDie.run(.defaultEnv, .emptyStdin)
+        try await workspace.layoutWorkspace()
+        XCTAssertNil(workspace.adaptiveWidthAdjustment)
+        assertEquals(try await first.getAxRect(.nonCancellable)?.width, before + 100)
+    }
+
     func testChainedAdaptiveResizeCommandsUseLiveIntendedWidthBeforeLayout() async throws {
         let workspace = globalFocus.workspace
         let root = workspace.rootTilingContainer
