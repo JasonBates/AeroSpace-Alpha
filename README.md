@@ -21,7 +21,11 @@
 
 <br>
 
-## Alpha v1.0
+## Alpha v1.1
+
+v1.1 adds `resize --independent`, which changes one column's width and leaves
+its neighbours alone; under adaptive layout the centred arrangement grows or
+shrinks instead. See the [v1.1 release notes](docs/releases/1.1.md).
 
 v1.0 is [v0.8](docs/releases/0.8.md) renumbered so that SwipeAeroSpace chooses the
 right socket protocol; the code is unchanged. See the
